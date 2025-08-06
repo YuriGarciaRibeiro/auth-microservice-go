@@ -4,20 +4,25 @@ import (
 	"log"
 	"net/http"
 
-	"github.com/go-chi/chi/v5"
+	internalhttp "github.com/YuriGarciaRibeiro/auth-microservice-go/internal/transport/http"
+
+	"go.uber.org/zap"
 )
 
 func main() {
-	r := chi.NewRouter()
 
-	r.Get("/Healthz", func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("OK"))
-	})
-
-	log.Println("Servidor iniciado na porta :8080")
-	if err := http.ListenAndServe(":8080", r); err != nil {
-		log.Fatal("Erro ao iniciar o servidor na porta :8080")
+	logger, err := zap.NewProduction()
+	if err != nil {
+		log.Fatal("Erro ao iniciar serviço de log: ", err)
 	}
+	defer logger.Sync()
 
+	sugar := logger.Sugar()
+
+	router := internalhttp.NewRouter(sugar)
+
+	sugar.Info("server started in port :8080")
+	if err := http.ListenAndServe(":8080", router); err != nil {
+		sugar.Fatalw("Error starting server on port :8080", "error", err)
+	}
 }
