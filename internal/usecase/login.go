@@ -17,18 +17,18 @@ func NewLoginUseCase(userRepo domain.UserRepository) *LoginUseCase {
 	}
 }
 
-func (uc *LoginUseCase) Execute(email string, password string) (string, error) {
+func (uc *LoginUseCase) Execute(email string, password string) (*domain.User, error) {
 	user, err := uc.UserRepo.FindByEmail(email)
 	if err != nil {
-		return "", errors.New("error finding user")
+		return nil, errors.New("error finding user")
 	}
 	if user == nil {
-		return "", errors.New("user not found")
+		return nil, errors.New("user not found")
 	}
 
 	if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(password)); err != nil {
-		return "", errors.New("invalid password")
+		return nil, errors.New("invalid password")
 	}
 
-	return user.ID, nil
+	return user, nil
 }

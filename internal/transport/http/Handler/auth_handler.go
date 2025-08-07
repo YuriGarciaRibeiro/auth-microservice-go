@@ -11,9 +11,9 @@ import (
 )
 
 type AuthHandler struct {
-	Signup     *usecase.SignupUseCase
-	Login      *usecase.LoginUseCase
-	Validate   *validator.Validate
+	Signup       *usecase.SignupUseCase
+	Login        *usecase.LoginUseCase
+	Validate     *validator.Validate
 	TokenService domain.TokenService
 }
 
@@ -28,8 +28,11 @@ type LoginRequest struct {
 }
 
 type AuthResponse struct {
-	Token     string `json:"token"`
-	Id       string `json:"id"`
+	Token      string `json:"token"`
+	ID         string `json:"id"`
+	Name       string `json:"name"`
+	Email      string `json:"email"`
+	Role       string `json:"role"`
 	Expiration int64  `json:"expiration"`
 }
 
@@ -37,7 +40,7 @@ func (h *AuthHandler) SignUpHandler(w http.ResponseWriter, r *http.Request) {
 	var req SignupRequest
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid Body", http.StatusBadRequest)
+		http.Error(w, "Invalid body", http.StatusBadRequest)
 		return
 	}
 
@@ -46,27 +49,23 @@ func (h *AuthHandler) SignUpHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if req.Email == "" || req.Password == "" {
-		http.Error(w, "Email and Password are required", http.StatusBadRequest)
-		return
-	}
-
-	userID, err := h.Signup.Execute(req.Email, req.Password)
+	user, err := h.Signup.Execute(req.Email, req.Password)
 	if err != nil {
 		http.Error(w, "Error signing up: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	token, err := h.TokenService.GenerateToken(userID)
+	tokenStr, err := h.TokenService.GenerateToken(user.ID, user.Email)
 	if err != nil {
 		http.Error(w, "Error generating token: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
 	response := AuthResponse{
-		Token:     token,
-		Id:       userID,
-		Expiration: time.Now().Add(h.TokenService.AccessTokenExpiration(token)).Unix(),
+		Token:      tokenStr,
+		ID:         user.ID,
+		Email:      user.Email,
+		Expiration: time.Now().Add(h.TokenService.AccessTokenExpiration(tokenStr)).Unix(),
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -78,7 +77,7 @@ func (h *AuthHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 	var req LoginRequest
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid Body", http.StatusBadRequest)
+		http.Error(w, "Invalid body", http.StatusBadRequest)
 		return
 	}
 
@@ -87,27 +86,23 @@ func (h *AuthHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if req.Email == "" || req.Password == "" {
-		http.Error(w, "Email and Password are required", http.StatusBadRequest)
-		return
-	}
-
-	userID, err := h.Login.Execute(req.Email, req.Password)
+	user, err := h.Login.Execute(req.Email, req.Password)
 	if err != nil {
-		http.Error(w, "Error logging in: "+err.Error(), http.StatusInternalServerError)
+		http.Error(w, "Error logging in: "+err.Error(), http.StatusUnauthorized)
 		return
 	}
 
-	token, err := h.TokenService.GenerateToken(userID)
+	tokenStr, err := h.TokenService.GenerateToken(user.ID, user.Email)
 	if err != nil {
 		http.Error(w, "Error generating token: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
 	response := AuthResponse{
-		Token:     token,
-		Id:       userID,
-		Expiration: time.Now().Add(h.TokenService.AccessTokenExpiration(token)).Unix(),
+		Token:      tokenStr,
+		ID:         user.ID,
+		Email:      user.Email,
+		Expiration: time.Now().Add(h.TokenService.AccessTokenExpiration(tokenStr)).Unix(),
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -115,15 +110,35 @@ func (h *AuthHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(response)
 }
 
-// get all users
-func (h *AuthHandler) GetAllUsersHandler(w http.ResponseWriter, r *http.Request) {
-	users, err := h.Signup.UserRepo.GetAll()
-	if err != nil {
-		http.Error(w, "Error fetching users: "+err.Error(), http.StatusInternalServerError)
+func (h *AuthHandler) MeHandler(w http.ResponseWriter, r *http.Request) {
+	authHeader := r.Header.Get("Authorization")
+	if authHeader == "" {
+		http.Error(w, "Authorization header missing", http.StatusUnauthorized)
 		return
 	}
 
+	// Esperado: "Bearer <token>"
+	const prefix = "Bearer "
+	if len(authHeader) <= len(prefix) || authHeader[:len(prefix)] != prefix {
+		http.Error(w, "Invalid authorization header format", http.StatusUnauthorized)
+		return
+	}
+
+	tokenStr := authHeader[len(prefix):]
+
+	// Validar token e extrair claims
+	claims, err := h.TokenService.ValidateToken(tokenStr)
+	if err != nil {
+		http.Error(w, "Invalid or expired token: "+err.Error(), http.StatusUnauthorized)
+		return
+	}
+
+	response := map[string]interface{}{
+		"id":    claims.ID,
+		"email": claims.Email,
+	}
+
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(users)
+	json.NewEncoder(w).Encode(response)
 }
+

@@ -74,7 +74,7 @@ func NewRouter(logger *zap.SugaredLogger) http.Handler{
 
 	r.Post("/signup", authHandler.SignUpHandler)
 	r.Post("/login", authHandler.LoginHandler)
-	r.Get("/users", authHandler.GetAllUsersHandler)
+	r.Get("/me", authHandler.MeHandler)
 
 	return r
 }
