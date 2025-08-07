@@ -62,10 +62,12 @@ func NewRouter(logger *zap.SugaredLogger) http.Handler{
 
 	// Use Case
 	signUpUseCase := usecase.NewSignupUseCase(userRepo)
+	loginUseCase := usecase.NewLoginUseCase(userRepo)
 
 	// Handler
 	authHandler := &handler.AuthHandler{
 		Signup:      signUpUseCase,
+		Login:       loginUseCase,
 		Validate:    validate,
 		TokenService: tokenService,
 	}

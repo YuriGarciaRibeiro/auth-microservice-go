@@ -12,6 +12,7 @@ import (
 
 type AuthHandler struct {
 	Signup     *usecase.SignupUseCase
+	Login      *usecase.LoginUseCase
 	Validate   *validator.Validate
 	TokenService domain.TokenService
 }
@@ -21,10 +22,15 @@ type SignupRequest struct {
 	Password string `json:"password" validate:"required,min=6"`
 }
 
+type LoginRequest struct {
+	Email    string `json:"email" validate:"required,email"`
+	Password string `json:"password" validate:"required,min=6"`
+}
+
 type AuthResponse struct {
-	Token string `json:"token"`
-	Id   string `json:"id"`
-	Expiration int64 `json:"expiration"`
+	Token     string `json:"token"`
+	Id       string `json:"id"`
+	Expiration int64  `json:"expiration"`
 }
 
 func (h *AuthHandler) SignUpHandler(w http.ResponseWriter, r *http.Request) {
@@ -69,7 +75,44 @@ func (h *AuthHandler) SignUpHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *AuthHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
-	http.Error(w, "Login not implemented", http.StatusNotImplemented)
+	var req LoginRequest
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid Body", http.StatusBadRequest)
+		return
+	}
+
+	if err := h.Validate.Struct(req); err != nil {
+		http.Error(w, "Validation failed: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if req.Email == "" || req.Password == "" {
+		http.Error(w, "Email and Password are required", http.StatusBadRequest)
+		return
+	}
+
+	userID, err := h.Login.Execute(req.Email, req.Password)
+	if err != nil {
+		http.Error(w, "Error logging in: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	token, err := h.TokenService.GenerateToken(userID)
+	if err != nil {
+		http.Error(w, "Error generating token: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	response := AuthResponse{
+		Token:     token,
+		Id:       userID,
+		Expiration: time.Now().Add(h.TokenService.AccessTokenExpiration(token)).Unix(),
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(response)
 }
 
 // get all users
