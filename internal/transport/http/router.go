@@ -2,13 +2,17 @@ package http
 
 import (
 	"net/http"
+	"os"
+	"time"
 
 	"github.com/YuriGarciaRibeiro/auth-microservice-go/internal/infra/db"
+	"github.com/YuriGarciaRibeiro/auth-microservice-go/internal/service/token"
 	handler "github.com/YuriGarciaRibeiro/auth-microservice-go/internal/transport/http/Handler"
 	"github.com/YuriGarciaRibeiro/auth-microservice-go/internal/usecase"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-playground/validator/v10"
 	"go.uber.org/zap"
+	"strconv"
 )
 
 func NewRouter(logger *zap.SugaredLogger) http.Handler{
@@ -32,19 +36,43 @@ func NewRouter(logger *zap.SugaredLogger) http.Handler{
 
 	validate := validator.New()
 
-	// Repository (in-memory)
-	userRepo := db.NewInMemoryUserRepository()
+	gormDb := db.ConnectPostgres()
+	// Token Service
+	jwtExpirationHoursStr := os.Getenv("JWT_EXPIRATION_HOURS")
+	jwtExpirationHours, err := strconv.Atoi(jwtExpirationHoursStr)
+	if err != nil {
+		logger.Fatalf("Invalid JWT_EXPIRATION_HOURS: %v", err)
+	}
+
+	jwtRefreshExpirationHoursStr := os.Getenv("JWT_REFRESH_EXPIRATION_HOURS")
+	jwtRefreshExpirationHours, err := strconv.Atoi(jwtRefreshExpirationHoursStr)
+	if err != nil {
+		logger.Fatalf("Invalid JWT_REFRESH_EXPIRATION_HOURS: %v", err)
+	}
+
+	tokenService := token.NewTokenService(
+		os.Getenv("JWT_ISSUER"),
+		os.Getenv("JWT_AUDIENCE"),
+		time.Duration(jwtExpirationHours)*time.Hour,
+		time.Duration(jwtRefreshExpirationHours)*time.Hour,
+	)
+
+	// Repository
+	userRepo := db.NewGormUserRepository(gormDb)
 
 	// Use Case
 	signUpUseCase := usecase.NewSignupUseCase(userRepo)
 
 	// Handler
 	authHandler := &handler.AuthHandler{
-		Signgup: signUpUseCase,
-		Validate : validate,
+		Signup:      signUpUseCase,
+		Validate:    validate,
+		TokenService: tokenService,
 	}
 
 	r.Post("/signup", authHandler.SignUpHandler)
+	r.Post("/login", authHandler.LoginHandler)
+	r.Get("/users", authHandler.GetAllUsersHandler)
 
 	return r
 }

@@ -3,19 +3,28 @@ package handler
 import (
 	"encoding/json"
 	"net/http"
+	"time"
 
+	"github.com/YuriGarciaRibeiro/auth-microservice-go/internal/domain"
 	"github.com/YuriGarciaRibeiro/auth-microservice-go/internal/usecase"
 	"github.com/go-playground/validator/v10"
 )
 
-type AuthHandler struct{
-	Signgup *usecase.SignupUseCase
-	Validate *validator.Validate
+type AuthHandler struct {
+	Signup     *usecase.SignupUseCase
+	Validate   *validator.Validate
+	TokenService domain.TokenService
 }
 
 type SignupRequest struct {
 	Email    string `json:"email" validate:"required,email"`
 	Password string `json:"password" validate:"required,min=6"`
+}
+
+type AuthResponse struct {
+	Token string `json:"token"`
+	Id   string `json:"id"`
+	Expiration int64 `json:"expiration"`
 }
 
 func (h *AuthHandler) SignUpHandler(w http.ResponseWriter, r *http.Request) {
@@ -36,11 +45,42 @@ func (h *AuthHandler) SignUpHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.Signgup.Execute(req.Email, req.Password); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+	userID, err := h.Signup.Execute(req.Email, req.Password)
+	if err != nil {
+		http.Error(w, "Error signing up: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
+	token, err := h.TokenService.GenerateToken(userID)
+	if err != nil {
+		http.Error(w, "Error generating token: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	response := AuthResponse{
+		Token:     token,
+		Id:       userID,
+		Expiration: time.Now().Add(h.TokenService.AccessTokenExpiration(token)).Unix(),
+	}
+
+	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	w.Write([]byte("User Created"))
+	json.NewEncoder(w).Encode(response)
+}
+
+func (h *AuthHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
+	http.Error(w, "Login not implemented", http.StatusNotImplemented)
+}
+
+// get all users
+func (h *AuthHandler) GetAllUsersHandler(w http.ResponseWriter, r *http.Request) {
+	users, err := h.Signup.UserRepo.GetAll()
+	if err != nil {
+		http.Error(w, "Error fetching users: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(users)
 }

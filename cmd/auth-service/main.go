@@ -5,11 +5,16 @@ import (
 	"net/http"
 
 	internalhttp "github.com/YuriGarciaRibeiro/auth-microservice-go/internal/transport/http"
+	"github.com/joho/godotenv"
 
 	"go.uber.org/zap"
 )
 
 func main() {
+	if err := godotenv.Load(); err != nil {
+		log.Println("No .env file found, relying on environment variables")
+	}
+
 
 	logger, err := zap.NewProduction()
 	if err != nil {

@@ -18,15 +18,15 @@ func NewSignupUseCase(userRepo domain.UserRepository) *SignupUseCase {
 	}
 }
 
-func (uc *SignupUseCase) Execute(email, password string) error {
+func (uc *SignupUseCase) Execute(email, password string) (string, error) {
 	existingUser, _ := uc.UserRepo.FindByEmail(email)
 	if existingUser != nil {
-		return errors.New("Email already in use")
+		return "", errors.New("Email already in use")
 	}
 
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
-		return errors.New("error generating password hash")
+		return "", errors.New("error generating password hash")
 	}
 
 	newUser := &domain.User{
@@ -36,7 +36,7 @@ func (uc *SignupUseCase) Execute(email, password string) error {
 		Verified: false,
 	}
 
-	return uc.UserRepo.Create(newUser)
+	return newUser.ID, uc.UserRepo.Create(newUser)
 }
 
 func generateID() string {
