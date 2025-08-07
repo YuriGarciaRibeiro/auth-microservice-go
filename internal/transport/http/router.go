@@ -7,7 +7,7 @@ import (
 
 	"github.com/YuriGarciaRibeiro/auth-microservice-go/internal/infra/db"
 	"github.com/YuriGarciaRibeiro/auth-microservice-go/internal/service/token"
-	handler "github.com/YuriGarciaRibeiro/auth-microservice-go/internal/transport/http/Handler"
+	handler "github.com/YuriGarciaRibeiro/auth-microservice-go/internal/transport/http/handler"
 	"github.com/YuriGarciaRibeiro/auth-microservice-go/internal/usecase"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-playground/validator/v10"
@@ -72,9 +72,11 @@ func NewRouter(logger *zap.SugaredLogger) http.Handler{
 		TokenService: tokenService,
 	}
 
-	r.Post("/signup", authHandler.SignUpHandler)
-	r.Post("/login", authHandler.LoginHandler)
-	r.Get("/me", authHandler.MeHandler)
+	r.Route("/auth", func(r chi.Router) {
+		r.Post("/signup", authHandler.SignUpHandler)
+		r.Post("/login", authHandler.LoginHandler)
+		r.Get("/me", authHandler.MeHandler)
+	})
 
 	return r
 }

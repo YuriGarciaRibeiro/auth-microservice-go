@@ -16,7 +16,6 @@ func ConnectPostgres() *gorm.DB {
 		log.Fatalf("failed to connect to database: %v", err)
 	}
 
-	// Auto migrate user model
 	if err := db.AutoMigrate(&model.User{}); err != nil {
 		log.Fatalf("failed to run migrations: %v", err)
 	}
