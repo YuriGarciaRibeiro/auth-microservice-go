@@ -15,7 +15,10 @@ package main
 import (
 	"log"
 	"net/http"
+	"os"
+	"strconv"
 
+	"github.com/YuriGarciaRibeiro/auth-microservice-go/internal/infra/cache"
 	internalhttp "github.com/YuriGarciaRibeiro/auth-microservice-go/internal/transport/http"
 	"github.com/joho/godotenv"
 
@@ -36,7 +39,13 @@ func main() {
 
 	sugar := logger.Sugar()
 
-	router := internalhttp.NewRouter(sugar)
+	redisAddr := os.Getenv("REDIS_ADDR")
+	redisPass := os.Getenv("REDIS_PASS")
+	redisDB, _ := strconv.Atoi(os.Getenv("REDIS_DB"))
+
+	redisClient := cache.NewRedisClient(redisAddr, redisPass, redisDB)
+
+	router := internalhttp.NewRouter(sugar, redisClient)
 
 	sugar.Info("server started in port :8080")
 	if err := http.ListenAndServe(":8080", router); err != nil {

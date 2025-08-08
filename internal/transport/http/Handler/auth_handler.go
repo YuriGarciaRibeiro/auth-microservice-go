@@ -3,9 +3,11 @@ package handler
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/YuriGarciaRibeiro/auth-microservice-go/internal/domain"
+	"github.com/YuriGarciaRibeiro/auth-microservice-go/internal/infra/cache"
 	"github.com/YuriGarciaRibeiro/auth-microservice-go/internal/usecase"
 	"github.com/go-playground/validator/v10"
 )
@@ -15,6 +17,7 @@ type AuthHandler struct {
 	Login        *usecase.LoginUseCase
 	Validate     *validator.Validate
 	TokenService domain.TokenService
+	Cache        *cache.RedisClient
 }
 
 // SignUpRequest represents the payload for user registration
@@ -57,39 +60,37 @@ type UserResponse struct {
 // @Router /auth/signup [post]
 func (h *AuthHandler) SignUpHandler(w http.ResponseWriter, r *http.Request) {
 	var req SignUpRequest
-
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid body", http.StatusBadRequest)
-		return
+		http.Error(w, "Invalid body", http.StatusBadRequest); return
 	}
 
 	if err := h.Validate.Struct(req); err != nil {
-		http.Error(w, "Validation failed: "+err.Error(), http.StatusBadRequest)
-		return
+		http.Error(w, "Validation failed: "+err.Error(), http.StatusBadRequest); return
 	}
 
 	user, err := h.Signup.Execute(req.Email, req.Password)
 	if err != nil {
-		http.Error(w, "Error signing up: "+err.Error(), http.StatusInternalServerError)
-		return
+		http.Error(w, "Error signing up: "+err.Error(), http.StatusInternalServerError); return
 	}
 
 	tokenStr, err := h.TokenService.GenerateToken(user.ID, user.Email)
 	if err != nil {
-		http.Error(w, "Error generating token: "+err.Error(), http.StatusInternalServerError)
-		return
+		http.Error(w, "Error generating token: "+err.Error(), http.StatusInternalServerError); return
 	}
 
-	response := AuthResponse{
+	resp := AuthResponse{
 		Token:      tokenStr,
 		ID:         user.ID,
 		Email:      user.Email,
 		Expiration: time.Now().Add(h.TokenService.AccessTokenExpiration(tokenStr)).Unix(),
 	}
 
+	// (Opcional) cache de profile por ID, TTL curto
+	_ = h.Cache.SetJSON("profile:"+user.ID, UserResponse{ID: user.ID, Email: user.Email}, 5*time.Minute)
+
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(response)
+	_ = json.NewEncoder(w).Encode(resp)
 }
 
 // LoginHandler godoc
@@ -104,39 +105,34 @@ func (h *AuthHandler) SignUpHandler(w http.ResponseWriter, r *http.Request) {
 // @Router /auth/login [post]
 func (h *AuthHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 	var req LoginRequest
-
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid body", http.StatusBadRequest)
-		return
+		http.Error(w, "Invalid body", http.StatusBadRequest); return
 	}
-
 	if err := h.Validate.Struct(req); err != nil {
-		http.Error(w, "Validation failed: "+err.Error(), http.StatusBadRequest)
-		return
+		http.Error(w, "Validation failed: "+err.Error(), http.StatusBadRequest); return
 	}
 
 	user, err := h.Login.Execute(req.Email, req.Password)
 	if err != nil {
-		http.Error(w, "Error logging in: "+err.Error(), http.StatusUnauthorized)
-		return
+		http.Error(w, "Error logging in: "+err.Error(), http.StatusUnauthorized); return
 	}
 
 	tokenStr, err := h.TokenService.GenerateToken(user.ID, user.Email)
 	if err != nil {
-		http.Error(w, "Error generating token: "+err.Error(), http.StatusInternalServerError)
-		return
+		http.Error(w, "Error generating token: "+err.Error(), http.StatusInternalServerError); return
 	}
 
-	response := AuthResponse{
+	resp := AuthResponse{
 		Token:      tokenStr,
 		ID:         user.ID,
 		Email:      user.Email,
 		Expiration: time.Now().Add(h.TokenService.AccessTokenExpiration(tokenStr)).Unix(),
 	}
 
+	_ = h.Cache.SetJSON("profile:"+user.ID, UserResponse{ID: user.ID, Email: user.Email}, 5*time.Minute)
+
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(response)
+	_ = json.NewEncoder(w).Encode(resp)
 }
 
 // MeHandler godoc
@@ -150,30 +146,25 @@ func (h *AuthHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 // @Router /auth/me [get]
 func (h *AuthHandler) MeHandler(w http.ResponseWriter, r *http.Request) {
 	authHeader := r.Header.Get("Authorization")
-	if authHeader == "" {
-		http.Error(w, "Authorization header missing", http.StatusUnauthorized)
-		return
+	if !strings.HasPrefix(authHeader, "Bearer ") {
+		http.Error(w, "Invalid authorization header format", http.StatusUnauthorized); return
 	}
-
-	const prefix = "Bearer "
-	if len(authHeader) <= len(prefix) || authHeader[:len(prefix)] != prefix {
-		http.Error(w, "Invalid authorization header format", http.StatusUnauthorized)
-		return
-	}
-
-	tokenStr := authHeader[len(prefix):]
+	tokenStr := strings.TrimPrefix(authHeader, "Bearer ")
 
 	claims, err := h.TokenService.ValidateToken(tokenStr)
 	if err != nil {
-		http.Error(w, "Invalid or expired token: "+err.Error(), http.StatusUnauthorized)
-		return
+		http.Error(w, "Invalid or expired token: "+err.Error(), http.StatusUnauthorized); return
 	}
 
-	response := UserResponse{
-		ID:    claims.ID,
-		Email: claims.Email,
+	var cached UserResponse
+	if err := h.Cache.GetJSON("profile:"+claims.ID, &cached); err == nil && cached.ID != "" {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(cached); return
 	}
+
+	resp := UserResponse{ID: claims.ID, Email: claims.Email}
+	_ = h.Cache.SetJSON("profile:"+claims.ID, resp, 5*time.Minute)
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(response)
+	_ = json.NewEncoder(w).Encode(resp)
 }

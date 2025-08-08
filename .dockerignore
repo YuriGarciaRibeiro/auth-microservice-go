@@ -1,0 +1,24 @@
+# Go
+bin/
+build/
+*.test
+*.out
+
+# VCS
+.git
+.gitignore
+
+# IDE/editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+
+# Módulos (vamos baixar via go mod)
+vendor/
+
+# Docker
+docker-compose.override.yml

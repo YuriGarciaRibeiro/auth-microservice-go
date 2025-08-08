@@ -7,6 +7,8 @@ import (
 
 	"strconv"
 
+	_ "github.com/YuriGarciaRibeiro/auth-microservice-go/docs"
+	"github.com/YuriGarciaRibeiro/auth-microservice-go/internal/infra/cache"
 	"github.com/YuriGarciaRibeiro/auth-microservice-go/internal/infra/db"
 	"github.com/YuriGarciaRibeiro/auth-microservice-go/internal/service/token"
 	handler "github.com/YuriGarciaRibeiro/auth-microservice-go/internal/transport/http/handler"
@@ -14,11 +16,10 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-playground/validator/v10"
 	httpSwagger "github.com/swaggo/http-swagger"
-	_ "github.com/YuriGarciaRibeiro/auth-microservice-go/docs"
 	"go.uber.org/zap"
 )
 
-func NewRouter(logger *zap.SugaredLogger) http.Handler{
+func NewRouter(logger *zap.SugaredLogger, redisClient *cache.RedisClient) http.Handler{
 
 	r := chi.NewRouter()
 
@@ -73,6 +74,7 @@ func NewRouter(logger *zap.SugaredLogger) http.Handler{
 		Login:       loginUseCase,
 		Validate:    validate,
 		TokenService: tokenService,
+		Cache:       redisClient,
 	}
 
 	r.Route("/auth", func(r chi.Router) {
