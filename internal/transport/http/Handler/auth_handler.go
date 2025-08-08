@@ -17,27 +17,46 @@ type AuthHandler struct {
 	TokenService domain.TokenService
 }
 
-type SignupRequest struct {
-	Email    string `json:"email" validate:"required,email"`
-	Password string `json:"password" validate:"required,min=6"`
+// SignUpRequest represents the payload for user registration
+type SignUpRequest struct {
+	Email    string `json:"email" validate:"required,email" example:"user@example.com"`
+	Password string `json:"password" validate:"required,min=6" example:"123456"`
 }
 
+// LoginRequest represents the payload for user login
 type LoginRequest struct {
-	Email    string `json:"email" validate:"required,email"`
-	Password string `json:"password" validate:"required,min=6"`
+	Email    string `json:"email" validate:"required,email" example:"user@example.com"`
+	Password string `json:"password" validate:"required,min=6" example:"123456"`
 }
 
+// AuthResponse represents the response containing JWT and user info
 type AuthResponse struct {
-	Token      string `json:"token"`
-	ID         string `json:"id"`
-	Name       string `json:"name"`
-	Email      string `json:"email"`
-	Role       string `json:"role"`
-	Expiration int64  `json:"expiration"`
+	Token      string `json:"token" example:"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."`
+	ID         string `json:"id" example:"123"`
+	Name       string `json:"name" example:"John Doe"`
+	Email      string `json:"email" example:"user@example.com"`
+	Role       string `json:"role" example:"user"`
+	Expiration int64  `json:"expiration" example:"1617181723"`
 }
 
+// UserResponse represents basic user information
+type UserResponse struct {
+	ID    string `json:"id" example:"123"`
+	Email string `json:"email" example:"user@example.com"`
+}
+
+// SignUpHandler godoc
+// @Summary Register a new user
+// @Description Creates a new user account with email and password
+// @Tags auth
+// @Accept json
+// @Produce json
+// @Param input body SignUpRequest true "User registration data"
+// @Success 201 {object} AuthResponse
+// @Failure 400 {object} map[string]string
+// @Router /auth/signup [post]
 func (h *AuthHandler) SignUpHandler(w http.ResponseWriter, r *http.Request) {
-	var req SignupRequest
+	var req SignUpRequest
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "Invalid body", http.StatusBadRequest)
@@ -73,6 +92,16 @@ func (h *AuthHandler) SignUpHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(response)
 }
 
+// LoginHandler godoc
+// @Summary Authenticate a user
+// @Description Logs in a user with email and password, returning a JWT token
+// @Tags auth
+// @Accept json
+// @Produce json
+// @Param input body LoginRequest true "User login credentials"
+// @Success 200 {object} AuthResponse
+// @Failure 401 {object} map[string]string
+// @Router /auth/login [post]
 func (h *AuthHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 	var req LoginRequest
 
@@ -110,6 +139,15 @@ func (h *AuthHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(response)
 }
 
+// MeHandler godoc
+// @Summary Get authenticated user info
+// @Description Returns the authenticated user's ID and email from the provided JWT token
+// @Tags auth
+// @Security BearerAuth
+// @Produce json
+// @Success 200 {object} UserResponse
+// @Failure 401 {object} map[string]string
+// @Router /auth/me [get]
 func (h *AuthHandler) MeHandler(w http.ResponseWriter, r *http.Request) {
 	authHeader := r.Header.Get("Authorization")
 	if authHeader == "" {
@@ -117,7 +155,6 @@ func (h *AuthHandler) MeHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Esperado: "Bearer <token>"
 	const prefix = "Bearer "
 	if len(authHeader) <= len(prefix) || authHeader[:len(prefix)] != prefix {
 		http.Error(w, "Invalid authorization header format", http.StatusUnauthorized)
@@ -126,19 +163,17 @@ func (h *AuthHandler) MeHandler(w http.ResponseWriter, r *http.Request) {
 
 	tokenStr := authHeader[len(prefix):]
 
-	// Validar token e extrair claims
 	claims, err := h.TokenService.ValidateToken(tokenStr)
 	if err != nil {
 		http.Error(w, "Invalid or expired token: "+err.Error(), http.StatusUnauthorized)
 		return
 	}
 
-	response := map[string]interface{}{
-		"id":    claims.ID,
-		"email": claims.Email,
+	response := UserResponse{
+		ID:    claims.ID,
+		Email: claims.Email,
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(response)
 }
-

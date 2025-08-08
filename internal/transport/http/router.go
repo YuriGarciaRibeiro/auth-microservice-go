@@ -5,14 +5,17 @@ import (
 	"os"
 	"time"
 
+	"strconv"
+
 	"github.com/YuriGarciaRibeiro/auth-microservice-go/internal/infra/db"
 	"github.com/YuriGarciaRibeiro/auth-microservice-go/internal/service/token"
 	handler "github.com/YuriGarciaRibeiro/auth-microservice-go/internal/transport/http/handler"
 	"github.com/YuriGarciaRibeiro/auth-microservice-go/internal/usecase"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-playground/validator/v10"
+	httpSwagger "github.com/swaggo/http-swagger"
+	_ "github.com/YuriGarciaRibeiro/auth-microservice-go/docs"
 	"go.uber.org/zap"
-	"strconv"
 )
 
 func NewRouter(logger *zap.SugaredLogger) http.Handler{
@@ -77,6 +80,8 @@ func NewRouter(logger *zap.SugaredLogger) http.Handler{
 		r.Post("/login", authHandler.LoginHandler)
 		r.Get("/me", authHandler.MeHandler)
 	})
+
+	r.Get("/docs/*", httpSwagger.WrapHandler)
 
 	return r
 }

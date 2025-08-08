@@ -1,3 +1,15 @@
+// @title Auth Microservice API
+// @version 1.0
+// @description Serviço de autenticação centralizado com JWT
+// @contact.name Yuri Garcia Ribeiro
+// @contact.url https://github.com/YuriGarciaRibeiro/auth-microservice-go
+// @host localhost:8080
+// @BasePath /
+
+// @securityDefinitions.apikey BearerAuth
+// @in header
+// @name Authorization
+
 package main
 
 import (

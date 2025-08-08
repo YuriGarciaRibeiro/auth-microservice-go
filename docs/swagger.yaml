@@ -1,0 +1,151 @@
+basePath: /
+definitions:
+  handler.AuthResponse:
+    properties:
+      email:
+        example: user@example.com
+        type: string
+      expiration:
+        example: 1617181723
+        type: integer
+      id:
+        example: "123"
+        type: string
+      name:
+        example: John Doe
+        type: string
+      role:
+        example: user
+        type: string
+      token:
+        example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+        type: string
+    type: object
+  handler.LoginRequest:
+    properties:
+      email:
+        example: user@example.com
+        type: string
+      password:
+        example: "123456"
+        minLength: 6
+        type: string
+    required:
+    - email
+    - password
+    type: object
+  handler.SignUpRequest:
+    properties:
+      email:
+        example: user@example.com
+        type: string
+      password:
+        example: "123456"
+        minLength: 6
+        type: string
+    required:
+    - email
+    - password
+    type: object
+  handler.UserResponse:
+    properties:
+      email:
+        example: user@example.com
+        type: string
+      id:
+        example: "123"
+        type: string
+    type: object
+host: localhost:8080
+info:
+  contact:
+    name: Yuri Garcia Ribeiro
+    url: https://github.com/YuriGarciaRibeiro/auth-microservice-go
+  description: Serviço de autenticação centralizado com JWT
+  title: Auth Microservice API
+  version: "1.0"
+paths:
+  /auth/login:
+    post:
+      consumes:
+      - application/json
+      description: Logs in a user with email and password, returning a JWT token
+      parameters:
+      - description: User login credentials
+        in: body
+        name: input
+        required: true
+        schema:
+          $ref: '#/definitions/handler.LoginRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.AuthResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Authenticate a user
+      tags:
+      - auth
+  /auth/me:
+    get:
+      description: Returns the authenticated user's ID and email from the provided
+        JWT token
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.UserResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get authenticated user info
+      tags:
+      - auth
+  /auth/signup:
+    post:
+      consumes:
+      - application/json
+      description: Creates a new user account with email and password
+      parameters:
+      - description: User registration data
+        in: body
+        name: input
+        required: true
+        schema:
+          $ref: '#/definitions/handler.SignUpRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/handler.AuthResponse'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Register a new user
+      tags:
+      - auth
+securityDefinitions:
+  BearerAuth:
+    in: header
+    name: Authorization
+    type: apiKey
+swagger: "2.0"
