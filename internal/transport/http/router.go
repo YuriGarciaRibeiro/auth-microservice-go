@@ -3,86 +3,120 @@ package http
 import (
 	"net/http"
 	"os"
+	"strings"
 	"time"
-
-	"strconv"
 
 	_ "github.com/YuriGarciaRibeiro/auth-microservice-go/docs"
 	"github.com/YuriGarciaRibeiro/auth-microservice-go/internal/infra/cache"
 	"github.com/YuriGarciaRibeiro/auth-microservice-go/internal/infra/db"
-	"github.com/YuriGarciaRibeiro/auth-microservice-go/internal/service/token"
+	tokenSvc "github.com/YuriGarciaRibeiro/auth-microservice-go/internal/service/token"
 	handler "github.com/YuriGarciaRibeiro/auth-microservice-go/internal/transport/http/handler"
 	"github.com/YuriGarciaRibeiro/auth-microservice-go/internal/usecase"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-playground/validator/v10"
 	httpSwagger "github.com/swaggo/http-swagger"
+	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
 )
 
-func NewRouter(logger *zap.SugaredLogger, redisClient *cache.RedisClient) http.Handler{
+func mustDuration(envKey, def string) time.Duration {
+	v := os.Getenv(envKey)
+	if v == "" {
+		v = def
+	}
+	d, err := time.ParseDuration(v)
+	if err != nil {
+		panic("invalid duration for " + envKey + ": " + err.Error())
+	}
+	return d
+}
 
+func splitCSV(s string) []string {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return nil
+	}
+	parts := strings.Split(s, ",")
+	for i := range parts {
+		parts[i] = strings.TrimSpace(parts[i])
+	}
+	return parts
+}
+
+func newGoRedisFromEnv() *redis.Client {
+	addr := os.Getenv("REDIS_ADDR")
+	if addr == "" {
+		addr = "localhost:6379"
+	}
+	return redis.NewClient(&redis.Options{Addr: addr})
+}
+
+func NewRouter(logger *zap.SugaredLogger, appCache *cache.RedisClient) http.Handler {
 	r := chi.NewRouter()
 
+	// Basic request logging middleware.
 	r.Use(func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			logger.Infow("New request",
-				"Method", r.Method,
-				"Path", r.URL.Path,
-			)
-			next.ServeHTTP(w, r)
+		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+			logger.Infow("request", "method", req.Method, "path", req.URL.Path)
+			next.ServeHTTP(w, req)
 		})
 	})
 
-	r.Get("/Healthz", func(w http.ResponseWriter, r *http.Request) {
+	// Liveness probe.
+	r.Get("/healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("OK"))
+		_, _ = w.Write([]byte("OK"))
 	})
 
 	validate := validator.New()
 
+	// Database (GORM).
 	gormDb := db.ConnectPostgres()
-	// Token Service
-	jwtExpirationHoursStr := os.Getenv("JWT_EXPIRATION_HOURS")
-	jwtExpirationHours, err := strconv.Atoi(jwtExpirationHoursStr)
-	if err != nil {
-		logger.Fatalf("Invalid JWT_EXPIRATION_HOURS: %v", err)
+
+	// TokenService config (Plan B: ACCESS_/REFRESH_ envs).
+	accessSecret := []byte(os.Getenv("ACCESS_SECRET"))
+	refreshSecret := []byte(os.Getenv("REFRESH_SECRET"))
+	if len(accessSecret) == 0 || len(refreshSecret) == 0 {
+		logger.Fatal("ACCESS_SECRET and REFRESH_SECRET must be set")
 	}
 
-	jwtRefreshExpirationHoursStr := os.Getenv("JWT_REFRESH_EXPIRATION_HOURS")
-	jwtRefreshExpirationHours, err := strconv.Atoi(jwtRefreshExpirationHoursStr)
-	if err != nil {
-		logger.Fatalf("Invalid JWT_REFRESH_EXPIRATION_HOURS: %v", err)
+	cfg := tokenSvc.Config{
+		AccessSecret:    accessSecret,
+		RefreshSecret:   refreshSecret,
+		AccessTTL:       mustDuration("ACCESS_TOKEN_TTL", "15m"),
+		RefreshTTL:      mustDuration("REFRESH_TOKEN_TTL", "168h"),
+		Issuer:          os.Getenv("JWT_ISSUER"),            
+		DefaultAudience: splitCSV(os.Getenv("JWT_AUDIENCE")), 
 	}
 
-	tokenService := token.NewTokenService(
-		os.Getenv("JWT_ISSUER"),
-		os.Getenv("JWT_AUDIENCE"),
-		time.Duration(jwtExpirationHours)*time.Hour,
-		time.Duration(jwtRefreshExpirationHours)*time.Hour,
-	)
+	rawRedis := newGoRedisFromEnv()
+	tokenService := tokenSvc.NewService(cfg, rawRedis)
 
-	// Repository
+	// Repositories.
 	userRepo := db.NewGormUserRepository(gormDb)
 
-	// Use Case
-	signUpUseCase := usecase.NewSignupUseCase(userRepo)
-	loginUseCase := usecase.NewLoginUseCase(userRepo)
+	// Use cases.
+	signUpUC := usecase.NewSignupUseCase(userRepo)
+	loginUC := usecase.NewLoginUseCase(userRepo)
 
-	// Handler
 	authHandler := &handler.AuthHandler{
-		Signup:      signUpUseCase,
-		Login:       loginUseCase,
-		Validate:    validate,
+		Signup:       signUpUC,
+		Login:        loginUC,
+		Validate:     validate,
 		TokenService: tokenService,
-		Cache:       redisClient,
+		Cache:        appCache, 
 	}
 
+	// Routes.
 	r.Route("/auth", func(r chi.Router) {
 		r.Post("/signup", authHandler.SignUpHandler)
 		r.Post("/login", authHandler.LoginHandler)
-		r.Get("/me", authHandler.MeHandler)
+		r.Post("/logout", authHandler.LogoutHandler)
+		r.Post("/refresh", authHandler.RefreshHandler)
+		r.Post("/introspect", authHandler.IntrospectHandler)
 	})
 
+	// Swagger UI.
 	r.Get("/docs/*", httpSwagger.WrapHandler)
 
 	return r

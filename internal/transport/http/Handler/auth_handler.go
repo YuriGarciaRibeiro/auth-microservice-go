@@ -20,26 +20,17 @@ type AuthHandler struct {
 	Cache        *cache.RedisClient
 }
 
-// SignUpRequest represents the payload for user registration
-type SignUpRequest struct {
-	Email    string `json:"email" validate:"required,email" example:"user@example.com"`
-	Password string `json:"password" validate:"required,min=6" example:"123456"`
-}
-
-// LoginRequest represents the payload for user login
 type LoginRequest struct {
-	Email    string `json:"email" validate:"required,email" example:"user@example.com"`
-	Password string `json:"password" validate:"required,min=6" example:"123456"`
+    Email    string `json:"email" validate:"required,email" example:"user@example.com"`
+    Password string `json:"password" validate:"required,min=6" example:"123456"`
 }
 
-// AuthResponse represents the response containing JWT and user info
+// AuthResponse is returned on successful authentication.
 type AuthResponse struct {
-	Token      string `json:"token" example:"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."`
-	ID         string `json:"id" example:"123"`
-	Name       string `json:"name" example:"John Doe"`
-	Email      string `json:"email" example:"user@example.com"`
-	Role       string `json:"role" example:"user"`
-	Expiration int64  `json:"expiration" example:"1617181723"`
+    AccessToken  string    `json:"access_token"`
+    RefreshToken string    `json:"refresh_token"`
+    AccessExp    time.Time `json:"access_exp"`
+    RefreshExp   time.Time `json:"refresh_exp"`
 }
 
 // UserResponse represents basic user information
@@ -48,49 +39,102 @@ type UserResponse struct {
 	Email string `json:"email" example:"user@example.com"`
 }
 
+type RefreshRequest struct {
+	RefreshToken string `json:"refresh_token" validate:"required"`
+}
+
+type RefreshResponse struct {
+	AccessToken  string    `json:"access_token"`
+	RefreshToken string    `json:"refresh_token"`
+	AccessExp    time.Time `json:"access_exp"`
+	RefreshExp   time.Time `json:"refresh_exp"`
+}
+
+type SignUpRequest struct {
+	Email    string `json:"email" validate:"required,email" example:"user@example.com"`
+	Password string `json:"password" validate:"required,min=6" example:"123456"`
+}
+
+type LogoutRequest struct {
+    AccessToken  string `json:"access_token"`
+    RefreshToken string `json:"refresh_token" validate:"required"`
+}
+
+type IntrospectRequest struct {
+	Token string `json:"token" validate:"required"`
+}
+
+type IntrospectResponse struct {
+	Active      bool     `json:"active"`
+	SubjectType string   `json:"subject_type,omitempty"`
+	Sub         string   `json:"sub,omitempty"`
+	Email       string   `json:"email,omitempty"`
+	Roles       []string `json:"roles,omitempty"`
+	Scope       []string `json:"scope,omitempty"`
+	Aud         []string `json:"aud,omitempty"`
+}
+
+
 // SignUpHandler godoc
 // @Summary Register a new user
-// @Description Creates a new user account with email and password
+// @Description Creates a new user account and returns an access+refresh token pair
 // @Tags auth
 // @Accept json
 // @Produce json
 // @Param input body SignUpRequest true "User registration data"
 // @Success 201 {object} AuthResponse
 // @Failure 400 {object} map[string]string
+// @Failure 422 {object} map[string]string
+// @Failure 500 {object} map[string]string
 // @Router /auth/signup [post]
 func (h *AuthHandler) SignUpHandler(w http.ResponseWriter, r *http.Request) {
+	// 1) Decode and validate payload
 	var req SignUpRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid body", http.StatusBadRequest); return
+		http.Error(w, "invalid payload", http.StatusBadRequest)
+		return
 	}
-
 	if err := h.Validate.Struct(req); err != nil {
-		http.Error(w, "Validation failed: "+err.Error(), http.StatusBadRequest); return
+		http.Error(w, "validation failed: "+err.Error(), http.StatusUnprocessableEntity)
+		return
 	}
 
+	// 2) Create user (domain-level)
 	user, err := h.Signup.Execute(req.Email, req.Password)
 	if err != nil {
-		http.Error(w, "Error signing up: "+err.Error(), http.StatusInternalServerError); return
+		http.Error(w, "failed to create user: "+err.Error(), http.StatusInternalServerError)
+		return
 	}
 
-	tokenStr, err := h.TokenService.GenerateToken(user.ID, user.Email)
+	// 3) Build principal and issue tokens (access + refresh)
+	principal := domain.Principal{
+		Type:     domain.PrincipalUser,
+		ID:       user.ID,
+		Email:    user.Email,
+		Roles:    []string{},
+		Scopes:   nil,
+		Audience: nil,
+	}
+
+	pair, err := h.TokenService.IssuePair(principal)
 	if err != nil {
-		http.Error(w, "Error generating token: "+err.Error(), http.StatusInternalServerError); return
+		http.Error(w, "failed to issue tokens: "+err.Error(), http.StatusInternalServerError)
+		return
 	}
 
-	resp := AuthResponse{
-		Token:      tokenStr,
-		ID:         user.ID,
-		Email:      user.Email,
-		Expiration: time.Now().Add(h.TokenService.AccessTokenExpiration(tokenStr)).Unix(),
+	if h.Cache != nil {
+		_ = h.Cache.SetJSON("profile:"+user.ID, UserResponse{ID: user.ID, Email: user.Email}, 5*time.Minute)
 	}
 
-	// (Opcional) cache de profile por ID, TTL curto
-	_ = h.Cache.SetJSON("profile:"+user.ID, UserResponse{ID: user.ID, Email: user.Email}, 5*time.Minute)
-
+	// 5) Respond
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	_ = json.NewEncoder(w).Encode(resp)
+	_ = json.NewEncoder(w).Encode(AuthResponse{
+		AccessToken:  pair.AccessToken,
+		RefreshToken: pair.RefreshToken,
+		AccessExp:    pair.AccessExp,
+		RefreshExp:   pair.RefreshExp,
+	})
 }
 
 // LoginHandler godoc
@@ -104,67 +148,161 @@ func (h *AuthHandler) SignUpHandler(w http.ResponseWriter, r *http.Request) {
 // @Failure 401 {object} map[string]string
 // @Router /auth/login [post]
 func (h *AuthHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
-	var req LoginRequest
+    // 1) Decode and validate input
+    var req LoginRequest
+    if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+        http.Error(w, "invalid payload", http.StatusBadRequest)
+        return
+    }
+    if err := h.Validate.Struct(req); err != nil {
+        http.Error(w, "validation failed", http.StatusUnprocessableEntity)
+        return
+    }
+
+    user, err := h.Login.Execute(req.Email, req.Password)
+    if err != nil || user.ID == "" {
+        http.Error(w, "invalid credentials", http.StatusUnauthorized)
+        return
+    }
+
+    principal := domain.Principal{
+        Type:     domain.PrincipalUser, 
+        ID:       user.ID,
+        Email:    req.Email,
+        Roles:    []string{},
+        Scopes:   nil,
+        Audience: nil,
+    }
+
+    pair, err := h.TokenService.IssuePair(principal)
+    if err != nil {
+        http.Error(w, "failed to issue tokens", http.StatusInternalServerError)
+        return
+    }
+
+    w.Header().Set("Content-Type", "application/json")
+    json.NewEncoder(w).Encode(AuthResponse{
+        AccessToken:  pair.AccessToken,
+        RefreshToken: pair.RefreshToken,
+        AccessExp:    pair.AccessExp,
+        RefreshExp:   pair.RefreshExp,
+    })
+}
+
+// RefreshHandler godoc
+// @Summary Rotate tokens using a valid refresh token
+// @Description Exchanges a valid refresh token for a new access+refresh pair
+// @Tags auth
+// @Accept json
+// @Produce json
+// @Param input body RefreshRequest true "Refresh token payload"
+// @Success 200 {object} RefreshResponse
+// @Failure 400 {object} map[string]string
+// @Failure 401 {object} map[string]string
+// @Router /auth/refresh [post]
+func (h *AuthHandler) RefreshHandler(w http.ResponseWriter, r *http.Request) {
+	var req RefreshRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid body", http.StatusBadRequest); return
+		http.Error(w, "invalid payload", http.StatusBadRequest)
+		return
 	}
 	if err := h.Validate.Struct(req); err != nil {
-		http.Error(w, "Validation failed: "+err.Error(), http.StatusBadRequest); return
+		http.Error(w, "validation failed", http.StatusUnprocessableEntity)
+		return
 	}
 
-	user, err := h.Login.Execute(req.Email, req.Password)
+	pair, err := h.TokenService.Rotate(req.RefreshToken)
 	if err != nil {
-		http.Error(w, "Error logging in: "+err.Error(), http.StatusUnauthorized); return
+		http.Error(w, "invalid or expired refresh token", http.StatusUnauthorized)
+		return
 	}
-
-	tokenStr, err := h.TokenService.GenerateToken(user.ID, user.Email)
-	if err != nil {
-		http.Error(w, "Error generating token: "+err.Error(), http.StatusInternalServerError); return
-	}
-
-	resp := AuthResponse{
-		Token:      tokenStr,
-		ID:         user.ID,
-		Email:      user.Email,
-		Expiration: time.Now().Add(h.TokenService.AccessTokenExpiration(tokenStr)).Unix(),
-	}
-
-	_ = h.Cache.SetJSON("profile:"+user.ID, UserResponse{ID: user.ID, Email: user.Email}, 5*time.Minute)
 
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(resp)
+	_ = json.NewEncoder(w).Encode(RefreshResponse{
+		AccessToken:  pair.AccessToken,
+		RefreshToken: pair.RefreshToken,
+		AccessExp:    pair.AccessExp,
+		RefreshExp:   pair.RefreshExp,
+	})
 }
 
-// MeHandler godoc
-// @Summary Get authenticated user info
-// @Description Returns the authenticated user's ID and email from the provided JWT token
+// LogoutHandler godoc
+// @Summary Logout and revoke tokens
+// @Description Revokes the provided tokens: access is blacklisted; refresh is removed from Redis.
 // @Tags auth
-// @Security BearerAuth
+// @Accept json
 // @Produce json
-// @Success 200 {object} UserResponse
+// @Param input body LogoutRequest true "Tokens to revoke"
+// @Success 204
+// @Failure 400 {object} map[string]string
 // @Failure 401 {object} map[string]string
-// @Router /auth/me [get]
-func (h *AuthHandler) MeHandler(w http.ResponseWriter, r *http.Request) {
-	authHeader := r.Header.Get("Authorization")
-	if !strings.HasPrefix(authHeader, "Bearer ") {
-		http.Error(w, "Invalid authorization header format", http.StatusUnauthorized); return
-	}
-	tokenStr := strings.TrimPrefix(authHeader, "Bearer ")
+// @Router /auth/logout [post]
+func (h *AuthHandler) LogoutHandler(w http.ResponseWriter, r *http.Request) {
+    var req LogoutRequest
+    if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+        http.Error(w, "invalid payload", http.StatusBadRequest)
+        return
+    }
+    if err := h.Validate.Struct(req); err != nil {
+        http.Error(w, "validation failed: "+err.Error(), http.StatusUnprocessableEntity)
+        return
+    }
 
-	claims, err := h.TokenService.ValidateToken(tokenStr)
+    access := req.AccessToken
+    if access == "" {
+        auth := r.Header.Get("Authorization")
+        if strings.HasPrefix(auth, "Bearer ") {
+            access = strings.TrimPrefix(auth, "Bearer ")
+        }
+    }
+
+    if err := h.TokenService.RevokePair(access, req.RefreshToken); err != nil {
+        http.Error(w, "failed to revoke tokens", http.StatusInternalServerError)
+        return
+    }
+
+    w.WriteHeader(http.StatusNoContent)
+}
+
+// IntrospectHandler godoc
+// @Summary Introspect an access token
+// @Description Validates an access token and returns whether it's active along with principal info
+// @Tags auth
+// @Accept json
+// @Produce json
+// @Param input body IntrospectRequest true "Token to introspect"
+// @Success 200 {object} IntrospectResponse
+// @Failure 400 {object} map[string]string
+// @Router /auth/introspect [post]
+func (h *AuthHandler) IntrospectHandler(w http.ResponseWriter, r *http.Request) {
+	var req IntrospectRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "invalid payload", http.StatusBadRequest)
+		return
+	}
+	if err := h.Validate.Struct(req); err != nil {
+		http.Error(w, "validation failed", http.StatusUnprocessableEntity)
+		return
+	}
+
+	active, claims, err := h.TokenService.Introspect(req.Token)
 	if err != nil {
-		http.Error(w, "Invalid or expired token: "+err.Error(), http.StatusUnauthorized); return
+		// Operational error on our side (e.g., Redis down)
+		http.Error(w, "introspection error", http.StatusInternalServerError)
+		return
 	}
 
-	var cached UserResponse
-	if err := h.Cache.GetJSON("profile:"+claims.ID, &cached); err == nil && cached.ID != "" {
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(cached); return
+	resp := IntrospectResponse{Active: active}
+	if active && claims != nil {
+		resp.SubjectType = string(claims.SubjectType)
+		resp.Sub = claims.SubjectID
+		resp.Email = claims.Email
+		resp.Roles = claims.Roles
+		resp.Scope = claims.Scopes
+		resp.Aud = claims.Audience
 	}
-
-	resp := UserResponse{ID: claims.ID, Email: claims.Email}
-	_ = h.Cache.SetJSON("profile:"+claims.ID, resp, 5*time.Minute)
 
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(resp)
 }
+
