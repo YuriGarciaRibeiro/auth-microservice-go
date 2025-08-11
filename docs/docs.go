@@ -18,6 +18,49 @@ const docTemplate = `{
     "host": "{{.Host}}",
     "basePath": "{{.BasePath}}",
     "paths": {
+        "/auth/introspect": {
+            "post": {
+                "description": "Validates an access token and returns whether it's active along with principal info",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "auth"
+                ],
+                "summary": "Introspect an access token",
+                "parameters": [
+                    {
+                        "description": "Token to introspect",
+                        "name": "input",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handler.IntrospectRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/handler.IntrospectResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/auth/login": {
             "post": {
                 "description": "Logs in a user with email and password, returning a JWT token",
@@ -61,26 +104,93 @@ const docTemplate = `{
                 }
             }
         },
-        "/auth/me": {
-            "get": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
+        "/auth/logout": {
+            "post": {
+                "description": "Revokes the provided tokens: access is blacklisted; refresh is removed from Redis.",
+                "consumes": [
+                    "application/json"
                 ],
-                "description": "Returns the authenticated user's ID and email from the provided JWT token",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
                     "auth"
                 ],
-                "summary": "Get authenticated user info",
+                "summary": "Logout and revoke tokens",
+                "parameters": [
+                    {
+                        "description": "Tokens to revoke",
+                        "name": "input",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handler.LogoutRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/auth/refresh": {
+            "post": {
+                "description": "Exchanges a valid refresh token for a new access+refresh pair",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "auth"
+                ],
+                "summary": "Rotate tokens using a valid refresh token",
+                "parameters": [
+                    {
+                        "description": "Refresh token payload",
+                        "name": "input",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handler.RefreshRequest"
+                        }
+                    }
+                ],
                 "responses": {
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/handler.UserResponse"
+                            "$ref": "#/definitions/handler.RefreshResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
                         }
                     },
                     "401": {
@@ -97,7 +207,7 @@ const docTemplate = `{
         },
         "/auth/signup": {
             "post": {
-                "description": "Creates a new user account with email and password",
+                "description": "Creates a new user account and returns an access+refresh token pair",
                 "consumes": [
                     "application/json"
                 ],
@@ -134,6 +244,24 @@ const docTemplate = `{
                                 "type": "string"
                             }
                         }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
                     }
                 }
             }
@@ -143,29 +271,63 @@ const docTemplate = `{
         "handler.AuthResponse": {
             "type": "object",
             "properties": {
-                "email": {
-                    "type": "string",
-                    "example": "user@example.com"
+                "access_exp": {
+                    "type": "string"
                 },
-                "expiration": {
-                    "type": "integer",
-                    "example": 1617181723
+                "access_token": {
+                    "type": "string"
                 },
-                "id": {
-                    "type": "string",
-                    "example": "123"
+                "refresh_exp": {
+                    "type": "string"
                 },
-                "name": {
-                    "type": "string",
-                    "example": "John Doe"
-                },
-                "role": {
-                    "type": "string",
-                    "example": "user"
-                },
+                "refresh_token": {
+                    "type": "string"
+                }
+            }
+        },
+        "handler.IntrospectRequest": {
+            "type": "object",
+            "required": [
+                "token"
+            ],
+            "properties": {
                 "token": {
-                    "type": "string",
-                    "example": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+                    "type": "string"
+                }
+            }
+        },
+        "handler.IntrospectResponse": {
+            "type": "object",
+            "properties": {
+                "active": {
+                    "type": "boolean"
+                },
+                "aud": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "email": {
+                    "type": "string"
+                },
+                "roles": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "scope": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "sub": {
+                    "type": "string"
+                },
+                "subject_type": {
+                    "type": "string"
                 }
             }
         },
@@ -187,6 +349,48 @@ const docTemplate = `{
                 }
             }
         },
+        "handler.LogoutRequest": {
+            "type": "object",
+            "required": [
+                "refresh_token"
+            ],
+            "properties": {
+                "access_token": {
+                    "type": "string"
+                },
+                "refresh_token": {
+                    "type": "string"
+                }
+            }
+        },
+        "handler.RefreshRequest": {
+            "type": "object",
+            "required": [
+                "refresh_token"
+            ],
+            "properties": {
+                "refresh_token": {
+                    "type": "string"
+                }
+            }
+        },
+        "handler.RefreshResponse": {
+            "type": "object",
+            "properties": {
+                "access_exp": {
+                    "type": "string"
+                },
+                "access_token": {
+                    "type": "string"
+                },
+                "refresh_exp": {
+                    "type": "string"
+                },
+                "refresh_token": {
+                    "type": "string"
+                }
+            }
+        },
         "handler.SignUpRequest": {
             "type": "object",
             "required": [
@@ -202,19 +406,6 @@ const docTemplate = `{
                     "type": "string",
                     "minLength": 6,
                     "example": "123456"
-                }
-            }
-        },
-        "handler.UserResponse": {
-            "type": "object",
-            "properties": {
-                "email": {
-                    "type": "string",
-                    "example": "user@example.com"
-                },
-                "id": {
-                    "type": "string",
-                    "example": "123"
                 }
             }
         }

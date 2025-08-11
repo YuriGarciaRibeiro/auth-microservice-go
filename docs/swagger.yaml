@@ -2,23 +2,43 @@ basePath: /
 definitions:
   handler.AuthResponse:
     properties:
-      email:
-        example: user@example.com
+      access_exp:
         type: string
-      expiration:
-        example: 1617181723
-        type: integer
-      id:
-        example: "123"
+      access_token:
         type: string
-      name:
-        example: John Doe
+      refresh_exp:
         type: string
-      role:
-        example: user
+      refresh_token:
         type: string
+    type: object
+  handler.IntrospectRequest:
+    properties:
       token:
-        example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+        type: string
+    required:
+    - token
+    type: object
+  handler.IntrospectResponse:
+    properties:
+      active:
+        type: boolean
+      aud:
+        items:
+          type: string
+        type: array
+      email:
+        type: string
+      roles:
+        items:
+          type: string
+        type: array
+      scope:
+        items:
+          type: string
+        type: array
+      sub:
+        type: string
+      subject_type:
         type: string
     type: object
   handler.LoginRequest:
@@ -34,6 +54,33 @@ definitions:
     - email
     - password
     type: object
+  handler.LogoutRequest:
+    properties:
+      access_token:
+        type: string
+      refresh_token:
+        type: string
+    required:
+    - refresh_token
+    type: object
+  handler.RefreshRequest:
+    properties:
+      refresh_token:
+        type: string
+    required:
+    - refresh_token
+    type: object
+  handler.RefreshResponse:
+    properties:
+      access_exp:
+        type: string
+      access_token:
+        type: string
+      refresh_exp:
+        type: string
+      refresh_token:
+        type: string
+    type: object
   handler.SignUpRequest:
     properties:
       email:
@@ -47,15 +94,6 @@ definitions:
     - email
     - password
     type: object
-  handler.UserResponse:
-    properties:
-      email:
-        example: user@example.com
-        type: string
-      id:
-        example: "123"
-        type: string
-    type: object
 host: localhost:8080
 info:
   contact:
@@ -65,6 +103,35 @@ info:
   title: Auth Microservice API
   version: "1.0"
 paths:
+  /auth/introspect:
+    post:
+      consumes:
+      - application/json
+      description: Validates an access token and returns whether it's active along
+        with principal info
+      parameters:
+      - description: Token to introspect
+        in: body
+        name: input
+        required: true
+        schema:
+          $ref: '#/definitions/handler.IntrospectRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.IntrospectResponse'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Introspect an access token
+      tags:
+      - auth
   /auth/login:
     post:
       consumes:
@@ -93,33 +160,79 @@ paths:
       summary: Authenticate a user
       tags:
       - auth
-  /auth/me:
-    get:
-      description: Returns the authenticated user's ID and email from the provided
-        JWT token
+  /auth/logout:
+    post:
+      consumes:
+      - application/json
+      description: 'Revokes the provided tokens: access is blacklisted; refresh is
+        removed from Redis.'
+      parameters:
+      - description: Tokens to revoke
+        in: body
+        name: input
+        required: true
+        schema:
+          $ref: '#/definitions/handler.LogoutRequest'
       produces:
       - application/json
       responses:
-        "200":
-          description: OK
+        "204":
+          description: No Content
+        "400":
+          description: Bad Request
           schema:
-            $ref: '#/definitions/handler.UserResponse'
+            additionalProperties:
+              type: string
+            type: object
         "401":
           description: Unauthorized
           schema:
             additionalProperties:
               type: string
             type: object
-      security:
-      - BearerAuth: []
-      summary: Get authenticated user info
+      summary: Logout and revoke tokens
+      tags:
+      - auth
+  /auth/refresh:
+    post:
+      consumes:
+      - application/json
+      description: Exchanges a valid refresh token for a new access+refresh pair
+      parameters:
+      - description: Refresh token payload
+        in: body
+        name: input
+        required: true
+        schema:
+          $ref: '#/definitions/handler.RefreshRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.RefreshResponse'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Rotate tokens using a valid refresh token
       tags:
       - auth
   /auth/signup:
     post:
       consumes:
       - application/json
-      description: Creates a new user account with email and password
+      description: Creates a new user account and returns an access+refresh token
+        pair
       parameters:
       - description: User registration data
         in: body
@@ -136,6 +249,18 @@ paths:
             $ref: '#/definitions/handler.AuthResponse'
         "400":
           description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "422":
+          description: Unprocessable Entity
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
           schema:
             additionalProperties:
               type: string
