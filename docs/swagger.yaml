@@ -1,6 +1,6 @@
 basePath: /
 definitions:
-  handler.AuthResponse:
+  internal_transport_http_handler.AuthResponse:
     properties:
       access_exp:
         type: string
@@ -11,14 +11,39 @@ definitions:
       refresh_token:
         type: string
     type: object
-  handler.IntrospectRequest:
+  internal_transport_http_handler.ClientTokenRequest:
+    properties:
+      audience:
+        items:
+          type: string
+        type: array
+      client_id:
+        type: string
+      client_secret:
+        type: string
+      scopes:
+        items:
+          type: string
+        type: array
+    required:
+    - client_id
+    - client_secret
+    type: object
+  internal_transport_http_handler.ClientTokenResponse:
+    properties:
+      access_exp:
+        type: string
+      access_token:
+        type: string
+    type: object
+  internal_transport_http_handler.IntrospectRequest:
     properties:
       token:
         type: string
     required:
     - token
     type: object
-  handler.IntrospectResponse:
+  internal_transport_http_handler.IntrospectResponse:
     properties:
       active:
         type: boolean
@@ -41,7 +66,7 @@ definitions:
       subject_type:
         type: string
     type: object
-  handler.LoginRequest:
+  internal_transport_http_handler.LoginRequest:
     properties:
       email:
         example: user@example.com
@@ -54,7 +79,7 @@ definitions:
     - email
     - password
     type: object
-  handler.LogoutRequest:
+  internal_transport_http_handler.LogoutRequest:
     properties:
       access_token:
         type: string
@@ -63,14 +88,14 @@ definitions:
     required:
     - refresh_token
     type: object
-  handler.RefreshRequest:
+  internal_transport_http_handler.RefreshRequest:
     properties:
       refresh_token:
         type: string
     required:
     - refresh_token
     type: object
-  handler.RefreshResponse:
+  internal_transport_http_handler.RefreshResponse:
     properties:
       access_exp:
         type: string
@@ -81,7 +106,7 @@ definitions:
       refresh_token:
         type: string
     type: object
-  handler.SignUpRequest:
+  internal_transport_http_handler.SignUpRequest:
     properties:
       email:
         example: user@example.com
@@ -115,14 +140,14 @@ paths:
         name: input
         required: true
         schema:
-          $ref: '#/definitions/handler.IntrospectRequest'
+          $ref: '#/definitions/internal_transport_http_handler.IntrospectRequest'
       produces:
       - application/json
       responses:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/handler.IntrospectResponse'
+            $ref: '#/definitions/internal_transport_http_handler.IntrospectResponse'
         "400":
           description: Bad Request
           schema:
@@ -143,14 +168,14 @@ paths:
         name: input
         required: true
         schema:
-          $ref: '#/definitions/handler.LoginRequest'
+          $ref: '#/definitions/internal_transport_http_handler.LoginRequest'
       produces:
       - application/json
       responses:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/handler.AuthResponse'
+            $ref: '#/definitions/internal_transport_http_handler.AuthResponse'
         "401":
           description: Unauthorized
           schema:
@@ -172,7 +197,7 @@ paths:
         name: input
         required: true
         schema:
-          $ref: '#/definitions/handler.LogoutRequest'
+          $ref: '#/definitions/internal_transport_http_handler.LogoutRequest'
       produces:
       - application/json
       responses:
@@ -204,14 +229,14 @@ paths:
         name: input
         required: true
         schema:
-          $ref: '#/definitions/handler.RefreshRequest'
+          $ref: '#/definitions/internal_transport_http_handler.RefreshRequest'
       produces:
       - application/json
       responses:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/handler.RefreshResponse'
+            $ref: '#/definitions/internal_transport_http_handler.RefreshResponse'
         "400":
           description: Bad Request
           schema:
@@ -239,14 +264,14 @@ paths:
         name: input
         required: true
         schema:
-          $ref: '#/definitions/handler.SignUpRequest'
+          $ref: '#/definitions/internal_transport_http_handler.SignUpRequest'
       produces:
       - application/json
       responses:
         "201":
           description: Created
           schema:
-            $ref: '#/definitions/handler.AuthResponse'
+            $ref: '#/definitions/internal_transport_http_handler.AuthResponse'
         "400":
           description: Bad Request
           schema:
@@ -266,6 +291,44 @@ paths:
               type: string
             type: object
       summary: Register a new user
+      tags:
+      - auth
+  /auth/token:
+    post:
+      consumes:
+      - application/json
+      description: Issue access token for client credentials grant
+      parameters:
+      - description: Client credentials payload
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/internal_transport_http_handler.ClientTokenRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_transport_http_handler.ClientTokenResponse'
+        "400":
+          description: Invalid payload
+          schema:
+            type: string
+        "401":
+          description: Invalid client credentials
+          schema:
+            type: string
+        "422":
+          description: Validation failed
+          schema:
+            type: string
+        "500":
+          description: Internal server error
+          schema:
+            type: string
+      summary: Client Token
       tags:
       - auth
 securityDefinitions:

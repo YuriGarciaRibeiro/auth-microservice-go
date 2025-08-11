@@ -38,7 +38,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/handler.IntrospectRequest"
+                            "$ref": "#/definitions/internal_transport_http_handler.IntrospectRequest"
                         }
                     }
                 ],
@@ -46,7 +46,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/handler.IntrospectResponse"
+                            "$ref": "#/definitions/internal_transport_http_handler.IntrospectResponse"
                         }
                     },
                     "400": {
@@ -81,7 +81,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/handler.LoginRequest"
+                            "$ref": "#/definitions/internal_transport_http_handler.LoginRequest"
                         }
                     }
                 ],
@@ -89,7 +89,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/handler.AuthResponse"
+                            "$ref": "#/definitions/internal_transport_http_handler.AuthResponse"
                         }
                     },
                     "401": {
@@ -124,7 +124,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/handler.LogoutRequest"
+                            "$ref": "#/definitions/internal_transport_http_handler.LogoutRequest"
                         }
                     }
                 ],
@@ -173,7 +173,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/handler.RefreshRequest"
+                            "$ref": "#/definitions/internal_transport_http_handler.RefreshRequest"
                         }
                     }
                 ],
@@ -181,7 +181,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/handler.RefreshResponse"
+                            "$ref": "#/definitions/internal_transport_http_handler.RefreshResponse"
                         }
                     },
                     "400": {
@@ -225,7 +225,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/handler.SignUpRequest"
+                            "$ref": "#/definitions/internal_transport_http_handler.SignUpRequest"
                         }
                     }
                 ],
@@ -233,7 +233,7 @@ const docTemplate = `{
                     "201": {
                         "description": "Created",
                         "schema": {
-                            "$ref": "#/definitions/handler.AuthResponse"
+                            "$ref": "#/definitions/internal_transport_http_handler.AuthResponse"
                         }
                     },
                     "400": {
@@ -265,10 +265,68 @@ const docTemplate = `{
                     }
                 }
             }
+        },
+        "/auth/token": {
+            "post": {
+                "description": "Issue access token for client credentials grant",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "auth"
+                ],
+                "summary": "Client Token",
+                "parameters": [
+                    {
+                        "description": "Client credentials payload",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_transport_http_handler.ClientTokenRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_transport_http_handler.ClientTokenResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid payload",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "401": {
+                        "description": "Invalid client credentials",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "422": {
+                        "description": "Validation failed",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
         }
     },
     "definitions": {
-        "handler.AuthResponse": {
+        "internal_transport_http_handler.AuthResponse": {
             "type": "object",
             "properties": {
                 "access_exp": {
@@ -285,7 +343,45 @@ const docTemplate = `{
                 }
             }
         },
-        "handler.IntrospectRequest": {
+        "internal_transport_http_handler.ClientTokenRequest": {
+            "type": "object",
+            "required": [
+                "client_id",
+                "client_secret"
+            ],
+            "properties": {
+                "audience": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "client_id": {
+                    "type": "string"
+                },
+                "client_secret": {
+                    "type": "string"
+                },
+                "scopes": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        "internal_transport_http_handler.ClientTokenResponse": {
+            "type": "object",
+            "properties": {
+                "access_exp": {
+                    "type": "string"
+                },
+                "access_token": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_transport_http_handler.IntrospectRequest": {
             "type": "object",
             "required": [
                 "token"
@@ -296,7 +392,7 @@ const docTemplate = `{
                 }
             }
         },
-        "handler.IntrospectResponse": {
+        "internal_transport_http_handler.IntrospectResponse": {
             "type": "object",
             "properties": {
                 "active": {
@@ -331,7 +427,7 @@ const docTemplate = `{
                 }
             }
         },
-        "handler.LoginRequest": {
+        "internal_transport_http_handler.LoginRequest": {
             "type": "object",
             "required": [
                 "email",
@@ -349,7 +445,7 @@ const docTemplate = `{
                 }
             }
         },
-        "handler.LogoutRequest": {
+        "internal_transport_http_handler.LogoutRequest": {
             "type": "object",
             "required": [
                 "refresh_token"
@@ -363,7 +459,7 @@ const docTemplate = `{
                 }
             }
         },
-        "handler.RefreshRequest": {
+        "internal_transport_http_handler.RefreshRequest": {
             "type": "object",
             "required": [
                 "refresh_token"
@@ -374,7 +470,7 @@ const docTemplate = `{
                 }
             }
         },
-        "handler.RefreshResponse": {
+        "internal_transport_http_handler.RefreshResponse": {
             "type": "object",
             "properties": {
                 "access_exp": {
@@ -391,7 +487,7 @@ const docTemplate = `{
                 }
             }
         },
-        "handler.SignUpRequest": {
+        "internal_transport_http_handler.SignUpRequest": {
             "type": "object",
             "required": [
                 "email",

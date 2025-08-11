@@ -213,6 +213,38 @@ func (s *Service) Introspect(token string) (bool, *domain.TokenClaims, error) {
 	return true, claims, nil
 }
 
+// IssueAccessOnly generates an access token without a refresh token.
+func (s *Service) IssueAccessOnly(p domain.Principal) (token string, exp time.Time, err error) {
+	now := s.now()
+	jti := uuid.NewString()
+	exp = now.Add(s.cfg.AccessTTL)
+
+	aud := p.Audience
+	if len(aud) == 0 && len(s.cfg.DefaultAudience) > 0 {
+		aud = s.cfg.DefaultAudience
+	}
+
+	claims := jwt.MapClaims{
+		"iss":          s.cfg.Issuer,
+		"sub":          p.ID,
+		"subject_type": string(p.Type), // "service"
+		"email":        p.Email,        // vazio para service
+		"roles":        p.Roles,
+		"scope":        p.Scopes,
+		"aud":          aud,
+		"client_id":    p.ClientID,
+		"jti":          jti,
+		"iat":          now.Unix(),
+		"exp":          exp.Unix(),
+	}
+
+	tok, err := s.sign(claims, s.cfg.AccessSecret)
+	if err != nil {
+		return "", time.Time{}, fmt.Errorf("sign access: %w", err)
+	}
+	return tok, exp, nil
+}
+
 // ===== Internals =====
 
 // sign signs a MapClaims with the given secret using HS256.

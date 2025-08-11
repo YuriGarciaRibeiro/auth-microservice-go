@@ -43,4 +43,6 @@ type TokenService interface {
 
 	// Introspect tells whether the token is active and returns claims if active.
 	Introspect(token string) (active bool, claims *TokenClaims, err error)
+
+	IssueAccessOnly(p Principal) (token string, exp time.Time, err error)
 }

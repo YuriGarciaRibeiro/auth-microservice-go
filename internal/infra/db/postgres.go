@@ -1,6 +1,7 @@
 package db
 
 import (
+	"context"
 	"log"
 	"os"
 
@@ -16,8 +17,16 @@ func ConnectPostgres() *gorm.DB {
 		log.Fatalf("failed to connect to database: %v", err)
 	}
 
-	if err := db.AutoMigrate(&model.User{}); err != nil {
+	if err := db.AutoMigrate(
+		&model.User{},
+		&model.Client{},
+	); err != nil {
 		log.Fatalf("failed to run migrations: %v", err)
+	}
+
+	// Seed default client (idempotente)
+	if err := SeedClients(context.Background(), db); err != nil {
+		log.Fatalf("failed to seed clients: %v", err)
 	}
 
 	return db

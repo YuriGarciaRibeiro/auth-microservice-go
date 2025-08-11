@@ -54,7 +54,6 @@ func newGoRedisFromEnv() *redis.Client {
 func NewRouter(logger *zap.SugaredLogger, appCache *cache.RedisClient) http.Handler {
 	r := chi.NewRouter()
 
-	// Basic request logging middleware.
 	r.Use(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 			logger.Infow("request", "method", req.Method, "path", req.URL.Path)
@@ -62,7 +61,6 @@ func NewRouter(logger *zap.SugaredLogger, appCache *cache.RedisClient) http.Hand
 		})
 	})
 
-	// Liveness probe.
 	r.Get("/healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("OK"))
@@ -70,7 +68,6 @@ func NewRouter(logger *zap.SugaredLogger, appCache *cache.RedisClient) http.Hand
 
 	validate := validator.New()
 
-	// Database (GORM).
 	gormDb := db.ConnectPostgres()
 
 	// TokenService config (Plan B: ACCESS_/REFRESH_ envs).
@@ -85,26 +82,36 @@ func NewRouter(logger *zap.SugaredLogger, appCache *cache.RedisClient) http.Hand
 		RefreshSecret:   refreshSecret,
 		AccessTTL:       mustDuration("ACCESS_TOKEN_TTL", "15m"),
 		RefreshTTL:      mustDuration("REFRESH_TOKEN_TTL", "168h"),
-		Issuer:          os.Getenv("JWT_ISSUER"),            
-		DefaultAudience: splitCSV(os.Getenv("JWT_AUDIENCE")), 
+		Issuer:          os.Getenv("JWT_ISSUER"),
+		DefaultAudience: splitCSV(os.Getenv("JWT_AUDIENCE")),
 	}
 
+	// Raw go-redis client for TokenService.
 	rawRedis := newGoRedisFromEnv()
 	tokenService := tokenSvc.NewService(cfg, rawRedis)
 
 	// Repositories.
 	userRepo := db.NewGormUserRepository(gormDb)
+	clientRepo := db.NewGormClientRepository(gormDb) // NEW
 
 	// Use cases.
 	signUpUC := usecase.NewSignupUseCase(userRepo)
 	loginUC := usecase.NewLoginUseCase(userRepo)
+	clientUC := usecase.NewClientCredentialsUseCase(clientRepo) // NEW
 
+	// Handlers.
 	authHandler := &handler.AuthHandler{
 		Signup:       signUpUC,
 		Login:        loginUC,
 		Validate:     validate,
 		TokenService: tokenService,
-		Cache:        appCache, 
+		Cache:        appCache,
+	}
+
+	clientTokenHandler := &handler.ClientTokenHandler{ // NEW
+		Validate:     validate,
+		UC:           clientUC,
+		TokenService: tokenService,
 	}
 
 	// Routes.
@@ -114,6 +121,7 @@ func NewRouter(logger *zap.SugaredLogger, appCache *cache.RedisClient) http.Hand
 		r.Post("/logout", authHandler.LogoutHandler)
 		r.Post("/refresh", authHandler.RefreshHandler)
 		r.Post("/introspect", authHandler.IntrospectHandler)
+		r.Post("/token", clientTokenHandler.ServeHTTP)
 	})
 
 	// Swagger UI.
