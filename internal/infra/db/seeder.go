@@ -88,8 +88,6 @@ func SeedInitialData(db *gorm.DB) error {
 		}).Create(&ur).Error; err != nil {
 			return err
 		}
-
-		log.Println("✅ Seeder executed successfully!")
 		return nil
 	})
 }

@@ -112,8 +112,6 @@ func (h *AuthHandler) SignUpHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	println("User created:", user.ID, "with roles:", roles, "and scopes:", scopes)
-
 	// 3) Build principal and issue tokens (access + refresh)
 	principal := domain.Principal{
 		Type:     domain.PrincipalUser,

@@ -39,20 +39,17 @@ func Authn(tokens domain.TokenService) func(http.Handler) http.Handler {
 
 			auth := r.Header.Get("Authorization")
 			if !strings.HasPrefix(auth, "Bearer ") {
-				println("Authorization header missing or malformed:", auth)
 				http.Error(w, "missing or malformed Authorization header", http.StatusUnauthorized)
 				return
 			}
 			access := strings.TrimPrefix(auth, "Bearer ")
 			if access == "" {
-				println("Missing access token")
 				http.Error(w, "missing access token", http.StatusUnauthorized)
 				return
 			}
 
 			claims, err := tokens.VerifyAccess(access)
 			if err != nil {
-				println("Token verification failed:", err.Error())
 				http.Error(w, "invalid or expired token", http.StatusUnauthorized)
 				return
 			}
@@ -65,7 +62,6 @@ func Authn(tokens domain.TokenService) func(http.Handler) http.Handler {
 				ClientID: claims.ClientID,
 				Audience: claims.Audience,
 			}
-			println("Authenticated user:", principal.Email)
 			ctx := context.WithValue(r.Context(), principalCtxKey, principal)
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})

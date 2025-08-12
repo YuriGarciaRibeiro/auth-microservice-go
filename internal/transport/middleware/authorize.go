@@ -39,14 +39,11 @@ func RequireScopes(scopes ...string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			p, ok := GetPrincipal(r)
-			println("Checking scopes:", p.Scopes, "against required:", scopes)
 			if !ok || p.ID == "" {
-				println("No principal found in context")
 				http.Error(w, "unauthorized", http.StatusUnauthorized)
 				return
 			}
 			if !hasAny(p.Scopes, req) {
-				println("Principal scopes mismatch")
 				http.Error(w, "forbidden (missing scope)", http.StatusForbidden)
 				return
 			}
@@ -60,14 +57,11 @@ func RequireAllScopes(scopes ...string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			p, ok := GetPrincipal(r)
-			println("Checking all scopes:", p.Scopes, "against required:", scopes)
 			if !ok || p.ID == "" {
-				println("No principal found in context")
 				http.Error(w, "unauthorized", http.StatusUnauthorized)
 				return
 			}
 			if !hasAll(p.Scopes, req) {
-				println("Principal scopes mismatch")
 				http.Error(w, "forbidden (missing scope)", http.StatusForbidden)
 				return
 			}
@@ -81,14 +75,11 @@ func RequireRoles(roles ...string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			p, ok := GetPrincipal(r)
-			println("Checking roles:", p.Roles, "against required:", roles)
 			if !ok || p.ID == "" {
-				println("No principal found in context")
 				http.Error(w, "unauthorized", http.StatusUnauthorized)
 				return
 			}
 			if !hasAny(p.Roles, req) {
-				println("Principal roles mismatch")
 				http.Error(w, "forbidden (missing role)", http.StatusForbidden)
 				return
 			}
@@ -102,14 +93,11 @@ func RequireAudience(requiredAud string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			p, ok := GetPrincipal(r)
-			println("Checking audience:", p.Audience, "against required:", requiredAud)
 			if !ok || p.ID == "" {
-				println("No principal found in context")
 				http.Error(w, "unauthorized", http.StatusUnauthorized)
 				return
 			}
 			if !hasAny(p.Audience, req) {
-				println("Principal audience mismatch")
 				http.Error(w, "forbidden (wrong audience)", http.StatusForbidden)
 				return
 			}
@@ -122,14 +110,11 @@ func RequireSubjectType(t domain.PrincipalType) func(http.Handler) http.Handler 
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			p, ok := GetPrincipal(r)
-			println("Checking subject type:", p.Type, "against required:", t)
 			if !ok || p.ID == "" {
-				println("No principal found in context")
 				http.Error(w, "unauthorized", http.StatusUnauthorized)
 				return
 			}
 			if p.Type != t {
-				println("Principal type mismatch")
 				http.Error(w, "forbidden (subject type)", http.StatusForbidden)
 				return
 			}
