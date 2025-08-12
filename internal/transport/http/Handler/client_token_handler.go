@@ -1,4 +1,3 @@
-// internal/transport/http/handler/client_token_handler.go
 package handler
 
 import (
@@ -27,6 +26,7 @@ type ClientTokenHandler struct {
 	Validate     *validator.Validate
 	UC           *usecase.ClientCredentialsUseCase
 	TokenService domain.TokenService
+	PermissionRepository domain.PermissionRepository
 }
 
 // @Summary      Client Token
@@ -50,10 +50,16 @@ func (h *ClientTokenHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "validation failed", http.StatusUnprocessableEntity); return
 	}
 
+	scopes, err := h.PermissionRepository.ListClientScopes(req.ClientID)
+	if err != nil {
+		http.Error(w, "invalid client credentials", http.StatusUnauthorized)
+		return
+	}
+
 	principal, err := h.UC.Execute(usecase.ClientCredentialsInput{
 		ClientID: req.ClientID,
 		Secret:   req.Secret,
-		Scopes:   req.Scopes,
+		Scopes:   scopes,
 		Audience: req.Audience,
 	})
 	if err != nil {

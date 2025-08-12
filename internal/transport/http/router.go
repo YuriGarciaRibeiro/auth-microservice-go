@@ -11,11 +11,12 @@ import (
 	"github.com/YuriGarciaRibeiro/auth-microservice-go/internal/infra/db"
 	tokenSvc "github.com/YuriGarciaRibeiro/auth-microservice-go/internal/service/token"
 	handler "github.com/YuriGarciaRibeiro/auth-microservice-go/internal/transport/http/handler"
+	"github.com/YuriGarciaRibeiro/auth-microservice-go/internal/transport/middleware"
 	"github.com/YuriGarciaRibeiro/auth-microservice-go/internal/usecase"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-playground/validator/v10"
-	httpSwagger "github.com/swaggo/http-swagger"
 	"github.com/redis/go-redis/v9"
+	httpSwagger "github.com/swaggo/http-swagger"
 	"go.uber.org/zap"
 )
 
@@ -92,12 +93,14 @@ func NewRouter(logger *zap.SugaredLogger, appCache *cache.RedisClient) http.Hand
 
 	// Repositories.
 	userRepo := db.NewGormUserRepository(gormDb)
-	clientRepo := db.NewGormClientRepository(gormDb) // NEW
+	clientRepo := db.NewGormClientRepository(gormDb)
+	permRepo := db.NewGormPermissionRepository(gormDb)
 
 	// Use cases.
 	signUpUC := usecase.NewSignupUseCase(userRepo)
 	loginUC := usecase.NewLoginUseCase(userRepo)
-	clientUC := usecase.NewClientCredentialsUseCase(clientRepo) // NEW
+	clientUC := usecase.NewClientCredentialsUseCase(clientRepo)
+	permUC := usecase.NewPermAdminUseCase(permRepo)
 
 	// Handlers.
 	authHandler := &handler.AuthHandler{
@@ -106,13 +109,17 @@ func NewRouter(logger *zap.SugaredLogger, appCache *cache.RedisClient) http.Hand
 		Validate:     validate,
 		TokenService: tokenService,
 		Cache:        appCache,
+		PermissionRepository: permRepo,
 	}
 
-	clientTokenHandler := &handler.ClientTokenHandler{ // NEW
+	clientTokenHandler := &handler.ClientTokenHandler{
 		Validate:     validate,
 		UC:           clientUC,
 		TokenService: tokenService,
+		PermissionRepository: permRepo,
 	}
+
+	adminHandler := &handler.AdminPermHandler{UC: permUC, Validate: validate}
 
 	// Routes.
 	r.Route("/auth", func(r chi.Router) {
@@ -122,6 +129,27 @@ func NewRouter(logger *zap.SugaredLogger, appCache *cache.RedisClient) http.Hand
 		r.Post("/refresh", authHandler.RefreshHandler)
 		r.Post("/introspect", authHandler.IntrospectHandler)
 		r.Post("/token", clientTokenHandler.ServeHTTP)
+	})
+
+	r.Route("/admin", func(r chi.Router) {
+		r.Use(middleware.Authn(tokenService))
+		r.Use(middleware.RequireRoles("admin"))
+
+		r.Post("/scopes", adminHandler.CreateScope)
+		r.Get("/scopes", adminHandler.ListScopes)
+
+		r.Post("/roles", adminHandler.CreateRole)
+		r.Get("/roles", adminHandler.ListRoles)
+		r.Post("/roles/{roleId}/scopes", adminHandler.AddScopesToRole)
+
+		r.Post("/users/{userId}/roles", adminHandler.AddRolesToUser)
+		r.Get("/users/{userId}/roles", adminHandler.ListUserRoles)
+		r.Get("/users/{userId}/scopes", adminHandler.ListUserEffective)
+		r.Post("/users/{userId}/scopes/grant", adminHandler.GrantUserScope)
+		r.Post("/users/{userId}/scopes/revoke", adminHandler.RevokeUserScope)
+
+		r.Post("/clients/{clientId}/scopes", adminHandler.AddScopesToClient)
+		r.Get("/clients/{clientId}/scopes", adminHandler.ListClientScopes)
 	})
 
 	// Swagger UI.

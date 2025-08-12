@@ -13,24 +13,25 @@ import (
 )
 
 type AuthHandler struct {
-	Signup       *usecase.SignupUseCase
-	Login        *usecase.LoginUseCase
-	Validate     *validator.Validate
-	TokenService domain.TokenService
-	Cache        *cache.RedisClient
+	Signup               *usecase.SignupUseCase
+	Login                *usecase.LoginUseCase
+	Validate             *validator.Validate
+	TokenService         domain.TokenService
+	Cache                *cache.RedisClient
+	PermissionRepository domain.PermissionRepository
 }
 
 type LoginRequest struct {
-    Email    string `json:"email" validate:"required,email" example:"user@example.com"`
-    Password string `json:"password" validate:"required,min=6" example:"123456"`
+	Email    string `json:"email" validate:"required,email" example:"user@example.com"`
+	Password string `json:"password" validate:"required,min=6" example:"123456"`
 }
 
 // AuthResponse is returned on successful authentication.
 type AuthResponse struct {
-    AccessToken  string    `json:"access_token"`
-    RefreshToken string    `json:"refresh_token"`
-    AccessExp    time.Time `json:"access_exp"`
-    RefreshExp   time.Time `json:"refresh_exp"`
+	AccessToken  string    `json:"access_token"`
+	RefreshToken string    `json:"refresh_token"`
+	AccessExp    time.Time `json:"access_exp"`
+	RefreshExp   time.Time `json:"refresh_exp"`
 }
 
 // UserResponse represents basic user information
@@ -56,8 +57,8 @@ type SignUpRequest struct {
 }
 
 type LogoutRequest struct {
-    AccessToken  string `json:"access_token"`
-    RefreshToken string `json:"refresh_token" validate:"required"`
+	AccessToken  string `json:"access_token"`
+	RefreshToken string `json:"refresh_token" validate:"required"`
 }
 
 type IntrospectRequest struct {
@@ -73,7 +74,6 @@ type IntrospectResponse struct {
 	Scope       []string `json:"scope,omitempty"`
 	Aud         []string `json:"aud,omitempty"`
 }
-
 
 // SignUpHandler godoc
 // @Summary Register a new user
@@ -106,13 +106,21 @@ func (h *AuthHandler) SignUpHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	roles, scopes, err := h.PermissionRepository.ListUserScopesEffective(user.ID, time.Now())
+	if err != nil {
+		http.Error(w, "failed to fetch user scopes: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	println("User created:", user.ID, "with roles:", roles, "and scopes:", scopes)
+
 	// 3) Build principal and issue tokens (access + refresh)
 	principal := domain.Principal{
 		Type:     domain.PrincipalUser,
 		ID:       user.ID,
 		Email:    user.Email,
-		Roles:    []string{},
-		Scopes:   nil,
+		Roles:    roles,
+		Scopes:   scopes,
 		Audience: nil,
 	}
 
@@ -148,45 +156,51 @@ func (h *AuthHandler) SignUpHandler(w http.ResponseWriter, r *http.Request) {
 // @Failure 401 {object} map[string]string
 // @Router /auth/login [post]
 func (h *AuthHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
-    // 1) Decode and validate input
-    var req LoginRequest
-    if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-        http.Error(w, "invalid payload", http.StatusBadRequest)
-        return
-    }
-    if err := h.Validate.Struct(req); err != nil {
-        http.Error(w, "validation failed", http.StatusUnprocessableEntity)
-        return
-    }
+	// 1) Decode and validate input
+	var req LoginRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "invalid payload", http.StatusBadRequest)
+		return
+	}
+	if err := h.Validate.Struct(req); err != nil {
+		http.Error(w, "validation failed", http.StatusUnprocessableEntity)
+		return
+	}
 
-    user, err := h.Login.Execute(req.Email, req.Password)
-    if err != nil || user.ID == "" {
-        http.Error(w, "invalid credentials", http.StatusUnauthorized)
-        return
-    }
+	user, err := h.Login.Execute(req.Email, req.Password)
+	if err != nil || user.ID == "" {
+		http.Error(w, "invalid credentials", http.StatusUnauthorized)
+		return
+	}
 
-    principal := domain.Principal{
-        Type:     domain.PrincipalUser, 
-        ID:       user.ID,
-        Email:    req.Email,
-        Roles:    []string{},
-        Scopes:   nil,
-        Audience: nil,
-    }
+	roles, scopes, err := h.PermissionRepository.ListUserScopesEffective(user.ID, time.Now())
+	if err != nil {
+		http.Error(w, "failed to fetch user scopes: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
 
-    pair, err := h.TokenService.IssuePair(principal)
-    if err != nil {
-        http.Error(w, "failed to issue tokens", http.StatusInternalServerError)
-        return
-    }
+	principal := domain.Principal{
+		Type:     domain.PrincipalUser,
+		ID:       user.ID,
+		Email:    req.Email,
+		Roles:    roles,
+		Scopes:   scopes,
+		Audience: nil,
+	}
 
-    w.Header().Set("Content-Type", "application/json")
-    json.NewEncoder(w).Encode(AuthResponse{
-        AccessToken:  pair.AccessToken,
-        RefreshToken: pair.RefreshToken,
-        AccessExp:    pair.AccessExp,
-        RefreshExp:   pair.RefreshExp,
-    })
+	pair, err := h.TokenService.IssuePair(principal)
+	if err != nil {
+		http.Error(w, "failed to issue tokens", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(AuthResponse{
+		AccessToken:  pair.AccessToken,
+		RefreshToken: pair.RefreshToken,
+		AccessExp:    pair.AccessExp,
+		RefreshExp:   pair.RefreshExp,
+	})
 }
 
 // RefreshHandler godoc
@@ -238,30 +252,30 @@ func (h *AuthHandler) RefreshHandler(w http.ResponseWriter, r *http.Request) {
 // @Failure 401 {object} map[string]string
 // @Router /auth/logout [post]
 func (h *AuthHandler) LogoutHandler(w http.ResponseWriter, r *http.Request) {
-    var req LogoutRequest
-    if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-        http.Error(w, "invalid payload", http.StatusBadRequest)
-        return
-    }
-    if err := h.Validate.Struct(req); err != nil {
-        http.Error(w, "validation failed: "+err.Error(), http.StatusUnprocessableEntity)
-        return
-    }
+	var req LogoutRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "invalid payload", http.StatusBadRequest)
+		return
+	}
+	if err := h.Validate.Struct(req); err != nil {
+		http.Error(w, "validation failed: "+err.Error(), http.StatusUnprocessableEntity)
+		return
+	}
 
-    access := req.AccessToken
-    if access == "" {
-        auth := r.Header.Get("Authorization")
-        if strings.HasPrefix(auth, "Bearer ") {
-            access = strings.TrimPrefix(auth, "Bearer ")
-        }
-    }
+	access := req.AccessToken
+	if access == "" {
+		auth := r.Header.Get("Authorization")
+		if strings.HasPrefix(auth, "Bearer ") {
+			access = strings.TrimPrefix(auth, "Bearer ")
+		}
+	}
 
-    if err := h.TokenService.RevokePair(access, req.RefreshToken); err != nil {
-        http.Error(w, "failed to revoke tokens", http.StatusInternalServerError)
-        return
-    }
+	if err := h.TokenService.RevokePair(access, req.RefreshToken); err != nil {
+		http.Error(w, "failed to revoke tokens", http.StatusInternalServerError)
+		return
+	}
 
-    w.WriteHeader(http.StatusNoContent)
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // IntrospectHandler godoc

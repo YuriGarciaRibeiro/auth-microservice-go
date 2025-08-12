@@ -18,6 +18,483 @@ const docTemplate = `{
     "host": "{{.Host}}",
     "basePath": "{{.BasePath}}",
     "paths": {
+        "/admin/clients/{clientId}/scopes": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns scopes attached directly to the client (table client_scopes)",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Admin"
+                ],
+                "summary": "List client scopes",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Client ID",
+                        "name": "clientId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Admin"
+                ],
+                "summary": "Attach scopes to client",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Client ID",
+                        "name": "clientId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Scope IDs",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handler.idsBody"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    }
+                }
+            }
+        },
+        "/admin/roles": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns all roles (id, key, desc)",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Admin"
+                ],
+                "summary": "List roles",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "additionalProperties": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Admin"
+                ],
+                "summary": "Create role",
+                "parameters": [
+                    {
+                        "description": "Role data",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handler.CreateRoleRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/roles/{roleId}/scopes": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Admin"
+                ],
+                "summary": "Attach scopes to role",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Role ID",
+                        "name": "roleId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Scope IDs",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handler.idsBody"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    }
+                }
+            }
+        },
+        "/admin/scopes": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Admin"
+                ],
+                "summary": "List scopes",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "additionalProperties": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Admin"
+                ],
+                "summary": "Create scope",
+                "parameters": [
+                    {
+                        "description": "Scope data",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handler.CreateScopeRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/users/{userId}/roles": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns the role keys assigned to the user",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Admin"
+                ],
+                "summary": "List user roles",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "User ID",
+                        "name": "userId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Admin"
+                ],
+                "summary": "Attach roles to user",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "User ID",
+                        "name": "userId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Role IDs",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handler.idsBody"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    }
+                }
+            }
+        },
+        "/admin/users/{userId}/scopes": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns user's effective permissions: roles and final scopes (roles ⊔ direct, non-expired)",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Admin"
+                ],
+                "summary": "List user effective scopes",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "User ID",
+                        "name": "userId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/users/{userId}/scopes/grant": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Grants a scope directly to the user (optional expiration). Prefer roles; use direct scopes for exceptions.",
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Admin"
+                ],
+                "summary": "Grant direct scope to user",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "User ID",
+                        "name": "userId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Grant payload",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handler.grantUserScopeReq"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "400": {
+                        "description": "bad request",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "409": {
+                        "description": "conflict",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "422": {
+                        "description": "validation failed",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/users/{userId}/scopes/revoke": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Removes a direct scope from the user",
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Admin"
+                ],
+                "summary": "Revoke direct scope from user",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "User ID",
+                        "name": "userId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Revoke payload",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handler.revokeUserScopeReq"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "400": {
+                        "description": "bad request",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "409": {
+                        "description": "conflict",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "422": {
+                        "description": "validation failed",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/auth/introspect": {
             "post": {
                 "description": "Validates an access token and returns whether it's active along with principal info",
@@ -38,7 +515,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_handler.IntrospectRequest"
+                            "$ref": "#/definitions/handler.IntrospectRequest"
                         }
                     }
                 ],
@@ -46,7 +523,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_handler.IntrospectResponse"
+                            "$ref": "#/definitions/handler.IntrospectResponse"
                         }
                     },
                     "400": {
@@ -81,7 +558,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_handler.LoginRequest"
+                            "$ref": "#/definitions/handler.LoginRequest"
                         }
                     }
                 ],
@@ -89,7 +566,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_handler.AuthResponse"
+                            "$ref": "#/definitions/handler.AuthResponse"
                         }
                     },
                     "401": {
@@ -124,7 +601,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_handler.LogoutRequest"
+                            "$ref": "#/definitions/handler.LogoutRequest"
                         }
                     }
                 ],
@@ -173,7 +650,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_handler.RefreshRequest"
+                            "$ref": "#/definitions/handler.RefreshRequest"
                         }
                     }
                 ],
@@ -181,7 +658,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_handler.RefreshResponse"
+                            "$ref": "#/definitions/handler.RefreshResponse"
                         }
                     },
                     "400": {
@@ -225,7 +702,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_handler.SignUpRequest"
+                            "$ref": "#/definitions/handler.SignUpRequest"
                         }
                     }
                 ],
@@ -233,7 +710,7 @@ const docTemplate = `{
                     "201": {
                         "description": "Created",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_handler.AuthResponse"
+                            "$ref": "#/definitions/handler.AuthResponse"
                         }
                     },
                     "400": {
@@ -286,7 +763,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_handler.ClientTokenRequest"
+                            "$ref": "#/definitions/handler.ClientTokenRequest"
                         }
                     }
                 ],
@@ -294,7 +771,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/internal_transport_http_handler.ClientTokenResponse"
+                            "$ref": "#/definitions/handler.ClientTokenResponse"
                         }
                     },
                     "400": {
@@ -326,7 +803,7 @@ const docTemplate = `{
         }
     },
     "definitions": {
-        "internal_transport_http_handler.AuthResponse": {
+        "handler.AuthResponse": {
             "type": "object",
             "properties": {
                 "access_exp": {
@@ -343,7 +820,7 @@ const docTemplate = `{
                 }
             }
         },
-        "internal_transport_http_handler.ClientTokenRequest": {
+        "handler.ClientTokenRequest": {
             "type": "object",
             "required": [
                 "client_id",
@@ -370,7 +847,7 @@ const docTemplate = `{
                 }
             }
         },
-        "internal_transport_http_handler.ClientTokenResponse": {
+        "handler.ClientTokenResponse": {
             "type": "object",
             "properties": {
                 "access_exp": {
@@ -381,7 +858,37 @@ const docTemplate = `{
                 }
             }
         },
-        "internal_transport_http_handler.IntrospectRequest": {
+        "handler.CreateRoleRequest": {
+            "type": "object",
+            "required": [
+                "desc",
+                "key"
+            ],
+            "properties": {
+                "desc": {
+                    "type": "string"
+                },
+                "key": {
+                    "type": "string"
+                }
+            }
+        },
+        "handler.CreateScopeRequest": {
+            "type": "object",
+            "required": [
+                "desc",
+                "key"
+            ],
+            "properties": {
+                "desc": {
+                    "type": "string"
+                },
+                "key": {
+                    "type": "string"
+                }
+            }
+        },
+        "handler.IntrospectRequest": {
             "type": "object",
             "required": [
                 "token"
@@ -392,7 +899,7 @@ const docTemplate = `{
                 }
             }
         },
-        "internal_transport_http_handler.IntrospectResponse": {
+        "handler.IntrospectResponse": {
             "type": "object",
             "properties": {
                 "active": {
@@ -427,7 +934,7 @@ const docTemplate = `{
                 }
             }
         },
-        "internal_transport_http_handler.LoginRequest": {
+        "handler.LoginRequest": {
             "type": "object",
             "required": [
                 "email",
@@ -445,7 +952,7 @@ const docTemplate = `{
                 }
             }
         },
-        "internal_transport_http_handler.LogoutRequest": {
+        "handler.LogoutRequest": {
             "type": "object",
             "required": [
                 "refresh_token"
@@ -459,7 +966,7 @@ const docTemplate = `{
                 }
             }
         },
-        "internal_transport_http_handler.RefreshRequest": {
+        "handler.RefreshRequest": {
             "type": "object",
             "required": [
                 "refresh_token"
@@ -470,7 +977,7 @@ const docTemplate = `{
                 }
             }
         },
-        "internal_transport_http_handler.RefreshResponse": {
+        "handler.RefreshResponse": {
             "type": "object",
             "properties": {
                 "access_exp": {
@@ -487,7 +994,7 @@ const docTemplate = `{
                 }
             }
         },
-        "internal_transport_http_handler.SignUpRequest": {
+        "handler.SignUpRequest": {
             "type": "object",
             "required": [
                 "email",
@@ -504,10 +1011,55 @@ const docTemplate = `{
                     "example": "123456"
                 }
             }
+        },
+        "handler.grantUserScopeReq": {
+            "type": "object",
+            "required": [
+                "granted_by",
+                "scope_id"
+            ],
+            "properties": {
+                "expires_at": {
+                    "type": "string"
+                },
+                "granted_by": {
+                    "type": "string"
+                },
+                "scope_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "handler.idsBody": {
+            "type": "object",
+            "required": [
+                "ids"
+            ],
+            "properties": {
+                "ids": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        "handler.revokeUserScopeReq": {
+            "type": "object",
+            "required": [
+                "scope_id"
+            ],
+            "properties": {
+                "scope_id": {
+                    "type": "string"
+                }
+            }
         }
     },
     "securityDefinitions": {
         "BearerAuth": {
+            "description": "Type \"Bearer\" followed by a space and JWT token.",
             "type": "apiKey",
             "name": "Authorization",
             "in": "header"

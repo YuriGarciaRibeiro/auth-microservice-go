@@ -1,7 +1,6 @@
 package db
 
 import (
-	"context"
 	"log"
 	"os"
 
@@ -20,13 +19,18 @@ func ConnectPostgres() *gorm.DB {
 	if err := db.AutoMigrate(
 		&model.User{},
 		&model.Client{},
+		&model.Scope{},
+		&model.Role{},
+		&model.RoleScope{},
+		&model.UserRole{},
+		&model.ClientScope{},
+		&model.UserScope{},
 	); err != nil {
 		log.Fatalf("failed to run migrations: %v", err)
 	}
 
-	// Seed default client (idempotente)
-	if err := SeedClients(context.Background(), db); err != nil {
-		log.Fatalf("failed to seed clients: %v", err)
+	if err := SeedInitialData(db); err != nil {
+		log.Fatalf("failed to seed initial data: %v", err)
 	}
 
 	return db

@@ -1,6 +1,6 @@
 basePath: /
 definitions:
-  internal_transport_http_handler.AuthResponse:
+  handler.AuthResponse:
     properties:
       access_exp:
         type: string
@@ -11,7 +11,7 @@ definitions:
       refresh_token:
         type: string
     type: object
-  internal_transport_http_handler.ClientTokenRequest:
+  handler.ClientTokenRequest:
     properties:
       audience:
         items:
@@ -29,21 +29,41 @@ definitions:
     - client_id
     - client_secret
     type: object
-  internal_transport_http_handler.ClientTokenResponse:
+  handler.ClientTokenResponse:
     properties:
       access_exp:
         type: string
       access_token:
         type: string
     type: object
-  internal_transport_http_handler.IntrospectRequest:
+  handler.CreateRoleRequest:
+    properties:
+      desc:
+        type: string
+      key:
+        type: string
+    required:
+    - desc
+    - key
+    type: object
+  handler.CreateScopeRequest:
+    properties:
+      desc:
+        type: string
+      key:
+        type: string
+    required:
+    - desc
+    - key
+    type: object
+  handler.IntrospectRequest:
     properties:
       token:
         type: string
     required:
     - token
     type: object
-  internal_transport_http_handler.IntrospectResponse:
+  handler.IntrospectResponse:
     properties:
       active:
         type: boolean
@@ -66,7 +86,7 @@ definitions:
       subject_type:
         type: string
     type: object
-  internal_transport_http_handler.LoginRequest:
+  handler.LoginRequest:
     properties:
       email:
         example: user@example.com
@@ -79,7 +99,7 @@ definitions:
     - email
     - password
     type: object
-  internal_transport_http_handler.LogoutRequest:
+  handler.LogoutRequest:
     properties:
       access_token:
         type: string
@@ -88,14 +108,14 @@ definitions:
     required:
     - refresh_token
     type: object
-  internal_transport_http_handler.RefreshRequest:
+  handler.RefreshRequest:
     properties:
       refresh_token:
         type: string
     required:
     - refresh_token
     type: object
-  internal_transport_http_handler.RefreshResponse:
+  handler.RefreshResponse:
     properties:
       access_exp:
         type: string
@@ -106,7 +126,7 @@ definitions:
       refresh_token:
         type: string
     type: object
-  internal_transport_http_handler.SignUpRequest:
+  handler.SignUpRequest:
     properties:
       email:
         example: user@example.com
@@ -119,6 +139,35 @@ definitions:
     - email
     - password
     type: object
+  handler.grantUserScopeReq:
+    properties:
+      expires_at:
+        type: string
+      granted_by:
+        type: string
+      scope_id:
+        type: string
+    required:
+    - granted_by
+    - scope_id
+    type: object
+  handler.idsBody:
+    properties:
+      ids:
+        items:
+          type: string
+        minItems: 1
+        type: array
+    required:
+    - ids
+    type: object
+  handler.revokeUserScopeReq:
+    properties:
+      scope_id:
+        type: string
+    required:
+    - scope_id
+    type: object
 host: localhost:8080
 info:
   contact:
@@ -128,6 +177,305 @@ info:
   title: Auth Microservice API
   version: "1.0"
 paths:
+  /admin/clients/{clientId}/scopes:
+    get:
+      description: Returns scopes attached directly to the client (table client_scopes)
+      parameters:
+      - description: Client ID
+        in: path
+        name: clientId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              type: string
+            type: array
+      security:
+      - BearerAuth: []
+      summary: List client scopes
+      tags:
+      - Admin
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Client ID
+        in: path
+        name: clientId
+        required: true
+        type: string
+      - description: Scope IDs
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handler.idsBody'
+      responses:
+        "204":
+          description: No Content
+      security:
+      - BearerAuth: []
+      summary: Attach scopes to client
+      tags:
+      - Admin
+  /admin/roles:
+    get:
+      description: Returns all roles (id, key, desc)
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              additionalProperties:
+                type: string
+              type: object
+            type: array
+      security:
+      - BearerAuth: []
+      summary: List roles
+      tags:
+      - Admin
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Role data
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handler.CreateRoleRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Create role
+      tags:
+      - Admin
+  /admin/roles/{roleId}/scopes:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Role ID
+        in: path
+        name: roleId
+        required: true
+        type: string
+      - description: Scope IDs
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handler.idsBody'
+      responses:
+        "204":
+          description: No Content
+      security:
+      - BearerAuth: []
+      summary: Attach scopes to role
+      tags:
+      - Admin
+  /admin/scopes:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              additionalProperties:
+                type: string
+              type: object
+            type: array
+      security:
+      - BearerAuth: []
+      summary: List scopes
+      tags:
+      - Admin
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Scope data
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handler.CreateScopeRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Create scope
+      tags:
+      - Admin
+  /admin/users/{userId}/roles:
+    get:
+      description: Returns the role keys assigned to the user
+      parameters:
+      - description: User ID
+        in: path
+        name: userId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              type: string
+            type: array
+      security:
+      - BearerAuth: []
+      summary: List user roles
+      tags:
+      - Admin
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: User ID
+        in: path
+        name: userId
+        required: true
+        type: string
+      - description: Role IDs
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handler.idsBody'
+      responses:
+        "204":
+          description: No Content
+      security:
+      - BearerAuth: []
+      summary: Attach roles to user
+      tags:
+      - Admin
+  /admin/users/{userId}/scopes:
+    get:
+      description: 'Returns user''s effective permissions: roles and final scopes
+        (roles ⊔ direct, non-expired)'
+      parameters:
+      - description: User ID
+        in: path
+        name: userId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List user effective scopes
+      tags:
+      - Admin
+  /admin/users/{userId}/scopes/grant:
+    post:
+      consumes:
+      - application/json
+      description: Grants a scope directly to the user (optional expiration). Prefer
+        roles; use direct scopes for exceptions.
+      parameters:
+      - description: User ID
+        in: path
+        name: userId
+        required: true
+        type: string
+      - description: Grant payload
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handler.grantUserScopeReq'
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: bad request
+          schema:
+            type: string
+        "409":
+          description: conflict
+          schema:
+            type: string
+        "422":
+          description: validation failed
+          schema:
+            type: string
+      security:
+      - BearerAuth: []
+      summary: Grant direct scope to user
+      tags:
+      - Admin
+  /admin/users/{userId}/scopes/revoke:
+    post:
+      consumes:
+      - application/json
+      description: Removes a direct scope from the user
+      parameters:
+      - description: User ID
+        in: path
+        name: userId
+        required: true
+        type: string
+      - description: Revoke payload
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handler.revokeUserScopeReq'
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: bad request
+          schema:
+            type: string
+        "409":
+          description: conflict
+          schema:
+            type: string
+        "422":
+          description: validation failed
+          schema:
+            type: string
+      security:
+      - BearerAuth: []
+      summary: Revoke direct scope from user
+      tags:
+      - Admin
   /auth/introspect:
     post:
       consumes:
@@ -140,14 +488,14 @@ paths:
         name: input
         required: true
         schema:
-          $ref: '#/definitions/internal_transport_http_handler.IntrospectRequest'
+          $ref: '#/definitions/handler.IntrospectRequest'
       produces:
       - application/json
       responses:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/internal_transport_http_handler.IntrospectResponse'
+            $ref: '#/definitions/handler.IntrospectResponse'
         "400":
           description: Bad Request
           schema:
@@ -168,14 +516,14 @@ paths:
         name: input
         required: true
         schema:
-          $ref: '#/definitions/internal_transport_http_handler.LoginRequest'
+          $ref: '#/definitions/handler.LoginRequest'
       produces:
       - application/json
       responses:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/internal_transport_http_handler.AuthResponse'
+            $ref: '#/definitions/handler.AuthResponse'
         "401":
           description: Unauthorized
           schema:
@@ -197,7 +545,7 @@ paths:
         name: input
         required: true
         schema:
-          $ref: '#/definitions/internal_transport_http_handler.LogoutRequest'
+          $ref: '#/definitions/handler.LogoutRequest'
       produces:
       - application/json
       responses:
@@ -229,14 +577,14 @@ paths:
         name: input
         required: true
         schema:
-          $ref: '#/definitions/internal_transport_http_handler.RefreshRequest'
+          $ref: '#/definitions/handler.RefreshRequest'
       produces:
       - application/json
       responses:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/internal_transport_http_handler.RefreshResponse'
+            $ref: '#/definitions/handler.RefreshResponse'
         "400":
           description: Bad Request
           schema:
@@ -264,14 +612,14 @@ paths:
         name: input
         required: true
         schema:
-          $ref: '#/definitions/internal_transport_http_handler.SignUpRequest'
+          $ref: '#/definitions/handler.SignUpRequest'
       produces:
       - application/json
       responses:
         "201":
           description: Created
           schema:
-            $ref: '#/definitions/internal_transport_http_handler.AuthResponse'
+            $ref: '#/definitions/handler.AuthResponse'
         "400":
           description: Bad Request
           schema:
@@ -304,14 +652,14 @@ paths:
         name: request
         required: true
         schema:
-          $ref: '#/definitions/internal_transport_http_handler.ClientTokenRequest'
+          $ref: '#/definitions/handler.ClientTokenRequest'
       produces:
       - application/json
       responses:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/internal_transport_http_handler.ClientTokenResponse'
+            $ref: '#/definitions/handler.ClientTokenResponse'
         "400":
           description: Invalid payload
           schema:
@@ -333,6 +681,7 @@ paths:
       - auth
 securityDefinitions:
   BearerAuth:
+    description: Type "Bearer" followed by a space and JWT token.
     in: header
     name: Authorization
     type: apiKey

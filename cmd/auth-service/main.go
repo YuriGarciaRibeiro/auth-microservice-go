@@ -9,6 +9,7 @@
 // @securityDefinitions.apikey BearerAuth
 // @in header
 // @name Authorization
+// @description Type "Bearer" followed by a space and JWT token.
 
 package main
 
@@ -29,7 +30,6 @@ func main() {
 	if err := godotenv.Load(); err != nil {
 		log.Println("No .env file found, relying on environment variables")
 	}
-
 
 	logger, err := zap.NewProduction()
 	if err != nil {
