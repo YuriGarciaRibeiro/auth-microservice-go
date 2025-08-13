@@ -94,7 +94,13 @@ func NewRouter(logger *zap.SugaredLogger, appCache *cache.RedisClient) http.Hand
 	// Repositories.
 	userRepo := db.NewGormUserRepository(gormDb)
 	clientRepo := db.NewGormClientRepository(gormDb)
-	permRepo := db.NewGormPermissionRepository(gormDb)
+	permRepo := db.NewGormPermissionRepositoryWithCache(
+		gormDb,
+		rawRedis,
+		mustDuration("PERM_CACHE_TTL", "15m"),
+	)
+
+	
 
 	// Use cases.
 	signUpUC := usecase.NewSignupUseCase(userRepo)

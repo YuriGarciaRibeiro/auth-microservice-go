@@ -1,8 +1,12 @@
 package db
 
 import (
+	"context"
+	"encoding/json"
+	"fmt"
 	"time"
 
+	"github.com/redis/go-redis/v9"
 	"github.com/YuriGarciaRibeiro/auth-microservice-go/internal/domain"
 	"github.com/YuriGarciaRibeiro/auth-microservice-go/internal/infra/db/model"
 	"gorm.io/gorm"
@@ -10,7 +14,25 @@ import (
 )
 
 type GormPermissionRepository struct {
-	db *gorm.DB
+	db      *gorm.DB
+	rdb     *redis.Client
+	permTTL time.Duration
+}
+
+func NewGormPermissionRepository(db *gorm.DB) domain.PermissionRepository {
+	return &GormPermissionRepository{db: db}
+}
+
+func NewGormPermissionRepositoryWithCache(db *gorm.DB, rdb *redis.Client, ttl time.Duration) domain.PermissionRepository {
+	return &GormPermissionRepository{db: db, rdb: rdb, permTTL: ttl}
+}
+
+func userPermKey(userID string) string     { return fmt.Sprintf("auth:perm:user:%s", userID) }
+func clientPermKey(clientID string) string { return fmt.Sprintf("auth:perm:client:%s", clientID) }
+
+type grantsPayload struct {
+	Roles  []string `json:"roles"`
+	Scopes []string `json:"scopes"`
 }
 
 // ListRoles implements domain.PermissionRepository.
@@ -66,6 +88,17 @@ func (g *GormPermissionRepository) ListUserRoles(userID string) ([]string, error
 }
 
 func (g *GormPermissionRepository) ListUserScopesEffective(userID string, now time.Time) (roles []string, scopes []string, err error) {
+	if g.rdb != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		if b, errGet := g.rdb.Get(ctx, userPermKey(userID)).Bytes(); errGet == nil {
+			var p grantsPayload
+			if errUnmarshal := json.Unmarshal(b, &p); errUnmarshal == nil {
+				return p.Roles, p.Scopes, nil
+			}
+		}
+	}
+
 	var roleScopes []struct{ Key string }
 	if err = g.db.Table("scopes s").
 		Select("s.key").
@@ -104,6 +137,13 @@ func (g *GormPermissionRepository) ListUserScopesEffective(userID string, now ti
 	for k := range set {
 		eff = append(eff, k)
 	}
+
+	if g.rdb != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		_ = g.setUserGrantsCache(ctx, userID, roles, eff)
+	}
+
 	return roles, eff, nil
 }
 
@@ -113,7 +153,10 @@ func (g *GormPermissionRepository) AddRolesToUser(userID string, roleIDs []strin
 	for i, roleID := range roleIDs {
 		ur[i] = model.UserRole{UserID: userID, RoleID: roleID}
 	}
-	return g.db.Create(&ur).Error
+	if err := g.db.Create(&ur).Error; err != nil {
+		return err
+	}
+	return g.InvalidateUser(userID)
 }
 
 // AddScopesToClient implements domain.PermissionRepository.
@@ -122,7 +165,10 @@ func (g *GormPermissionRepository) AddScopesToClient(clientID string, scopeIDs [
 	for i, scopeID := range scopeIDs {
 		sc[i] = model.ClientScope{ClientID: clientID, ScopeID: scopeID}
 	}
-	return g.db.Create(&sc).Error
+	if err := g.db.Create(&sc).Error; err != nil {
+		return err
+	}
+	return g.InvalidateClient(clientID)
 }
 
 // AddScopesToRole implements domain.PermissionRepository.
@@ -154,18 +200,39 @@ func (g *GormPermissionRepository) CreateScope(key string, desc string) (domain.
 
 // InvalidateClient implements domain.PermissionRepository.
 func (g *GormPermissionRepository) InvalidateClient(clientID string) error {
-	return nil
+	if g.rdb == nil {
+		return nil
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	return g.rdb.Del(ctx, clientPermKey(clientID)).Err()
 }
 
 // InvalidateUser implements domain.PermissionRepository.
 func (g *GormPermissionRepository) InvalidateUser(userID string) error {
-	return nil
+	if g.rdb == nil {
+		return nil
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	return g.rdb.Del(ctx, userPermKey(userID)).Err()
 }
 
 // ListClientScopes implements domain.PermissionRepository.
-func (r *GormPermissionRepository) ListClientScopes(clientID string) ([]string, error) {
+func (g *GormPermissionRepository) ListClientScopes(clientID string) ([]string, error) {
+	if g.rdb != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		if b, errGet := g.rdb.Get(ctx, clientPermKey(clientID)).Bytes(); errGet == nil {
+			var p grantsPayload
+			if errUnmarshal := json.Unmarshal(b, &p); errUnmarshal == nil {
+				return p.Scopes, nil
+			}
+		}
+	}
+
 	var rows []struct{ Key string }
-	q := r.db.Table("scopes s").
+	q := g.db.Table("scopes s").
 		Select("s.key").
 		Joins("JOIN client_scopes cs ON cs.scope_id = s.id").
 		Where("cs.client_id = ?", clientID).
@@ -177,13 +244,23 @@ func (r *GormPermissionRepository) ListClientScopes(clientID string) ([]string, 
 	for _, r := range rows {
 		out = append(out, r.Key)
 	}
+
+	if g.rdb != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		p := grantsPayload{Roles: nil, Scopes: out}
+		if b, _ := json.Marshal(p); b != nil {
+			_ = g.rdb.Set(ctx, clientPermKey(clientID), b, g.permTTL).Err()
+		}
+	}
+
 	return out, nil
 }
 
 // ListScopes implements domain.PermissionRepository.
-func (r *GormPermissionRepository) ListScopes() ([]domain.Scope, error) {
+func (g *GormPermissionRepository) ListScopes() ([]domain.Scope, error) {
 	var rows []model.Scope
-	if err := r.db.Order("key").Find(&rows).Error; err != nil {
+	if err := g.db.Order("key").Find(&rows).Error; err != nil {
 		return nil, err
 	}
 	out := make([]domain.Scope, 0, len(rows))
@@ -194,9 +271,9 @@ func (r *GormPermissionRepository) ListScopes() ([]domain.Scope, error) {
 }
 
 // ListUserScopes implements domain.PermissionRepository.
-func (r *GormPermissionRepository) ListUserScopes(userID string) ([]string, error) {
+func (g *GormPermissionRepository) ListUserScopes(userID string) ([]string, error) {
 	var rows []struct{ Key string }
-	q := r.db.Table("scopes s").
+	q := g.db.Table("scopes s").
 		Select("s.key").
 		Joins("JOIN role_scopes rs ON rs.scope_id = s.id").
 		Joins("JOIN user_roles ur ON ur.role_id = rs.role_id").
@@ -212,6 +289,11 @@ func (r *GormPermissionRepository) ListUserScopes(userID string) ([]string, erro
 	return out, nil
 }
 
-func NewGormPermissionRepository(db *gorm.DB) domain.PermissionRepository {
-	return &GormPermissionRepository{db: db}
+func (g *GormPermissionRepository) setUserGrantsCache(ctx context.Context, userID string, roles, scopes []string) error {
+	if g.rdb == nil {
+		return nil
+	}
+	p := grantsPayload{Roles: roles, Scopes: scopes}
+	b, _ := json.Marshal(p)
+	return g.rdb.Set(ctx, userPermKey(userID), b, g.permTTL).Err()
 }

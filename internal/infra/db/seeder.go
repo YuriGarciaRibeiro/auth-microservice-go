@@ -1,7 +1,6 @@
 package db
 
 import (
-	"log"
 	"os"
 
 	"github.com/YuriGarciaRibeiro/auth-microservice-go/internal/infra/db/model"
