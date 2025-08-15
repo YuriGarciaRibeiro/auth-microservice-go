@@ -20,10 +20,9 @@ import (
 	"strconv"
 
 	"github.com/YuriGarciaRibeiro/auth-microservice-go/internal/infra/cache"
+	"github.com/YuriGarciaRibeiro/auth-microservice-go/internal/infra/loggger"
 	internalhttp "github.com/YuriGarciaRibeiro/auth-microservice-go/internal/transport/http"
 	"github.com/joho/godotenv"
-
-	"go.uber.org/zap"
 )
 
 func main() {
@@ -31,13 +30,13 @@ func main() {
 		log.Println("No .env file found, relying on environment variables")
 	}
 
-	logger, err := zap.NewProduction()
+	l, err := loggger.Init()
 	if err != nil {
-		log.Fatal("Erro ao iniciar serviço de log: ", err)
+		panic(err)
 	}
-	defer logger.Sync()
+	defer l.Sync()
 
-	sugar := logger.Sugar()
+	sugar := l.Sugar()
 
 	redisAddr := os.Getenv("REDIS_ADDR")
 	redisPass := os.Getenv("REDIS_PASS")

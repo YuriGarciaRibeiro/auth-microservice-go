@@ -55,12 +55,9 @@ func newGoRedisFromEnv() *redis.Client {
 func NewRouter(logger *zap.SugaredLogger, appCache *cache.RedisClient) http.Handler {
 	r := chi.NewRouter()
 
-	r.Use(func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-			logger.Infow("request", "method", req.Method, "path", req.URL.Path)
-			next.ServeHTTP(w, req)
-		})
-	})
+	r.Use(middleware.RequestID)
+	r.Use(middleware.Recover)
+	r.Use(middleware.Logging)
 
 	r.Get("/healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
