@@ -30,6 +30,39 @@ services:
     networks:
       - auth-net
 
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    container_name: prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=15d
+    volumes:
+      - ./observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9090:9090"
+    networks:
+      - auth-net
+    depends_on:
+      - redis
+      - postgres
+
+  grafana:
+    image: grafana/grafana:10.4.6
+    container_name: grafana
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    volumes:
+      - ./observability/grafana/provisioning/datasources:/etc/grafana/provisioning/datasources
+      - ./observability/grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards
+      - ./observability/grafana/dashboards:/var/lib/grafana/dashboards
+    ports:
+      - "3000:3000"
+    networks:
+      - auth-net
+    depends_on:
+      - prometheus
+
 networks:
   auth-net:
     driver: bridge

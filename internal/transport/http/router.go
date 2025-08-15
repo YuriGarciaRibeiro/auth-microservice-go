@@ -11,6 +11,7 @@ import (
 	"github.com/YuriGarciaRibeiro/auth-microservice-go/internal/infra/db"
 	tokenSvc "github.com/YuriGarciaRibeiro/auth-microservice-go/internal/service/token"
 	handler "github.com/YuriGarciaRibeiro/auth-microservice-go/internal/transport/http/handler"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/YuriGarciaRibeiro/auth-microservice-go/internal/transport/middleware"
 	"github.com/YuriGarciaRibeiro/auth-microservice-go/internal/usecase"
 	"github.com/go-chi/chi/v5"
@@ -58,6 +59,7 @@ func NewRouter(logger *zap.SugaredLogger, appCache *cache.RedisClient) http.Hand
 	r.Use(middleware.RequestID)
 	r.Use(middleware.Recover)
 	r.Use(middleware.Logging)
+	r.Use(middleware.PrometheusHTTP) 
 
 	r.Get("/healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -154,6 +156,8 @@ func NewRouter(logger *zap.SugaredLogger, appCache *cache.RedisClient) http.Hand
 		r.Post("/clients/{clientId}/scopes", adminHandler.AddScopesToClient)
 		r.Get("/clients/{clientId}/scopes", adminHandler.ListClientScopes)
 	})
+
+	r.Handle("/metrics", promhttp.Handler())
 
 	// Swagger UI.
 	r.Get("/docs/*", httpSwagger.WrapHandler)

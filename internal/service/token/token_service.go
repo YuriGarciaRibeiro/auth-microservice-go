@@ -7,22 +7,21 @@ import (
 	"time"
 
 	"github.com/YuriGarciaRibeiro/auth-microservice-go/internal/domain"
+	"github.com/YuriGarciaRibeiro/auth-microservice-go/internal/infra/metrics"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
-	"github.com/golang-jwt/jwt/v5"
 )
 
 // Config holds secrets and TTLs for tokens.
-// add (ou ajuste) sua struct Config para incluir estes campos:
 type Config struct {
 	AccessSecret    []byte
 	RefreshSecret   []byte
 	AccessTTL       time.Duration
 	RefreshTTL      time.Duration
-	Issuer          string   // NEW
-	DefaultAudience []string // NEW
+	Issuer          string
+	DefaultAudience []string
 }
-
 
 // Service is the concrete TokenService implementation.
 type Service struct {
@@ -40,10 +39,8 @@ func NewService(cfg Config, redisClient *redis.Client) *Service {
 	}
 }
 
-
-func refreshKey(jti string) string  { return "auth:refresh:" + jti }
+func refreshKey(jti string) string   { return "auth:refresh:" + jti }
 func blacklistKey(jti string) string { return "auth:blacklist:" + jti }
-
 
 // IssuePair creates a fresh access+refresh token pair for the given principal.
 func (s *Service) IssuePair(p domain.Principal) (domain.TokenPair, error) {
@@ -61,17 +58,16 @@ func (s *Service) IssuePair(p domain.Principal) (domain.TokenPair, error) {
 	}
 
 	baseClaims := jwt.MapClaims{
-		"iss":           s.cfg.Issuer,
-		"sub":           p.ID,
-		"subject_type":  string(p.Type),
-		"email":         p.Email,
-		"roles":         p.Roles,
-		"scope":         p.Scopes,
-		"aud":           aud,                   
-		"client_id":     p.ClientID,
+		"iss":          s.cfg.Issuer,
+		"sub":          p.ID,
+		"subject_type": string(p.Type),
+		"email":        p.Email,
+		"roles":        p.Roles,
+		"scope":        p.Scopes,
+		"aud":          aud,
+		"client_id":    p.ClientID,
 	}
 
-	// ----- Access token -----
 	accessClaims := jwt.MapClaims{}
 	for k, v := range baseClaims {
 		accessClaims[k] = v
@@ -85,7 +81,6 @@ func (s *Service) IssuePair(p domain.Principal) (domain.TokenPair, error) {
 		return domain.TokenPair{}, fmt.Errorf("sign access: %w", err)
 	}
 
-	// ----- Refresh token -----
 	refreshClaims := jwt.MapClaims{}
 	for k, v := range baseClaims {
 		refreshClaims[k] = v
@@ -99,10 +94,14 @@ func (s *Service) IssuePair(p domain.Principal) (domain.TokenPair, error) {
 		return domain.TokenPair{}, fmt.Errorf("sign refresh: %w", err)
 	}
 
+	// Persist refresh marker (active) in Redis
 	ctx := context.Background()
 	if err := s.saveRefresh(ctx, refreshJTI, p.ID, s.cfg.RefreshTTL); err != nil {
 		return domain.TokenPair{}, fmt.Errorf("save refresh: %w", err)
 	}
+
+	metrics.IncAuthTokensIssued("access")
+	metrics.IncAuthTokensIssued("refresh")
 
 	return domain.TokenPair{
 		AccessToken:  accessToken,
@@ -118,7 +117,7 @@ func (s *Service) VerifyAccess(token string) (*domain.TokenClaims, error) {
 	if err != nil {
 		return nil, err
 	}
-	// Check blacklist for access token.
+
 	ctx := context.Background()
 	revoked, err := s.isAccessRevoked(ctx, jti)
 	if err != nil {
@@ -137,7 +136,6 @@ func (s *Service) Rotate(refreshToken string) (domain.TokenPair, error) {
 		return domain.TokenPair{}, err
 	}
 
-	// Ensure refresh JTI is active in Redis.
 	ctx := context.Background()
 	ok, err := s.refreshExists(ctx, refreshJTI)
 	if err != nil {
@@ -147,16 +145,13 @@ func (s *Service) Rotate(refreshToken string) (domain.TokenPair, error) {
 		return domain.TokenPair{}, errors.New("refresh not found (revoked or expired)")
 	}
 
-	// Build Principal from claims to re-issue a fresh pair.
 	p := principalFromClaims(*claims)
 
-	// Issue new pair.
 	pair, err := s.IssuePair(p)
 	if err != nil {
 		return domain.TokenPair{}, err
 	}
 
-	// Invalidate the old refresh JTI.
 	if err := s.deleteRefresh(ctx, refreshJTI); err != nil {
 		return domain.TokenPair{}, fmt.Errorf("delete old refresh: %w", err)
 	}
@@ -168,13 +163,13 @@ func (s *Service) Rotate(refreshToken string) (domain.TokenPair, error) {
 func (s *Service) RevokePair(accessToken, refreshToken string) error {
 	ctx := context.Background()
 
-	// Parse both tokens (do not strictly require success on both to avoid leaks).
+	// Parse both tokens (best-effort: não vaza info se inválidos).
 	_, accessJTI, _ := s.parseAndValidate(accessToken, s.cfg.AccessSecret)
 	_, refreshJTI, _ := s.parseAndValidate(refreshToken, s.cfg.RefreshSecret)
 
-	// Blacklist access if we extracted a JTI.
+	// Blacklist access se deu pra extrair JTI.
 	if accessJTI != "" {
-		// Set a TTL equal to the remaining exp to avoid indefinite growth.
+		// TTL igual ao restante da validade do token.
 		ttl, _ := s.remainingTTL(accessToken, s.cfg.AccessSecret)
 		if ttl <= 0 {
 			ttl = s.cfg.AccessTTL // fallback
@@ -182,13 +177,17 @@ func (s *Service) RevokePair(accessToken, refreshToken string) error {
 		if err := s.blacklistAccess(ctx, accessJTI, ttl); err != nil {
 			return fmt.Errorf("blacklist access: %w", err)
 		}
+		// ----- METRICS: revoked access -----
+		metrics.IncAuthTokensRevoked("access")
 	}
 
-	// Delete refresh JTI entry (idempotent).
+	// Delete refresh JTI entry (idempotente).
 	if refreshJTI != "" {
 		if err := s.deleteRefresh(ctx, refreshJTI); err != nil {
 			return fmt.Errorf("delete refresh: %w", err)
 		}
+		// ----- METRICS: revoked refresh -----
+		metrics.IncAuthTokensRevoked("refresh")
 	}
 
 	return nil
@@ -213,7 +212,7 @@ func (s *Service) Introspect(token string) (bool, *domain.TokenClaims, error) {
 	return true, claims, nil
 }
 
-// IssueAccessOnly generates an access token without a refresh token.
+// IssueAccessOnly generates an access token without a refresh token (client_credentials).
 func (s *Service) IssueAccessOnly(p domain.Principal) (token string, exp time.Time, err error) {
 	now := s.now()
 	jti := uuid.NewString()
@@ -227,7 +226,7 @@ func (s *Service) IssueAccessOnly(p domain.Principal) (token string, exp time.Ti
 	claims := jwt.MapClaims{
 		"iss":          s.cfg.Issuer,
 		"sub":          p.ID,
-		"subject_type": string(p.Type), // "service"
+		"subject_type": string(p.Type), // "service" para M2M
 		"email":        p.Email,        // vazio para service
 		"roles":        p.Roles,
 		"scope":        p.Scopes,
@@ -242,10 +241,12 @@ func (s *Service) IssueAccessOnly(p domain.Principal) (token string, exp time.Ti
 	if err != nil {
 		return "", time.Time{}, fmt.Errorf("sign access: %w", err)
 	}
+
+	metrics.IncAuthTokensIssued("client_credentials")
+
 	return tok, exp, nil
 }
 
-// ===== Internals =====
 
 // sign signs a MapClaims with the given secret using HS256.
 func (s *Service) sign(claims jwt.MapClaims, secret []byte) (string, error) {
@@ -266,7 +267,6 @@ func (s *Service) parseAndValidate(tokenStr string, secret []byte) (*domain.Toke
 	if err != nil || !tok.Valid {
 		return nil, "", errors.New("invalid token")
 	}
-
 
 	jti, _ := mc["jti"].(string)
 	claims := claimsFromMap(mc)
@@ -352,7 +352,6 @@ func toStringSlice(v any) []string {
 	}
 }
 
-// ===== Redis helpers =====
 
 func (s *Service) saveRefresh(ctx context.Context, jti string, userID string, ttl time.Duration) error {
 	// Value could be userID or any marker; we only check existence later.

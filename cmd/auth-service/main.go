@@ -21,6 +21,7 @@ import (
 
 	"github.com/YuriGarciaRibeiro/auth-microservice-go/internal/infra/cache"
 	"github.com/YuriGarciaRibeiro/auth-microservice-go/internal/infra/loggger"
+	"github.com/YuriGarciaRibeiro/auth-microservice-go/internal/infra/metrics"
 	internalhttp "github.com/YuriGarciaRibeiro/auth-microservice-go/internal/transport/http"
 	"github.com/joho/godotenv"
 )
@@ -35,6 +36,8 @@ func main() {
 		panic(err)
 	}
 	defer l.Sync()
+
+	metrics.MustRegister()
 
 	sugar := l.Sugar()
 
