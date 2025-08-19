@@ -168,6 +168,54 @@ definitions:
     required:
     - scope_id
     type: object
+  http.BuildzResponse:
+    properties:
+      build_time:
+        example: "2025-08-19T12:34:56Z"
+        type: string
+      commit:
+        example: abc123def456
+        type: string
+      env:
+        example: dev
+        type: string
+      service:
+        example: auth-microservice
+        type: string
+      version:
+        example: v1.0.0
+        type: string
+    type: object
+  http.HealthzResponse:
+    properties:
+      service:
+        example: auth-microservice
+        type: string
+      status:
+        example: ok
+        type: string
+    type: object
+  http.ReadyzResponse:
+    properties:
+      deps:
+        properties:
+          postgres:
+            properties:
+              ready:
+                example: true
+                type: boolean
+            type: object
+          redis:
+            properties:
+              ready:
+                example: true
+                type: boolean
+            type: object
+        type: object
+      status:
+        example: ok
+        type: string
+    type: object
 host: localhost:8080
 info:
   contact:
@@ -679,6 +727,49 @@ paths:
       summary: Client Token
       tags:
       - auth
+  /buildz:
+    get:
+      description: Returns build and version information about the service
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/http.BuildzResponse'
+      summary: Build Information
+      tags:
+      - health
+  /healthz:
+    get:
+      description: Basic health check endpoint that returns service status
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/http.HealthzResponse'
+      summary: Health Check
+      tags:
+      - health
+  /readyz:
+    get:
+      description: Readiness check that verifies database and Redis connectivity
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: All dependencies are ready
+          schema:
+            $ref: '#/definitions/http.ReadyzResponse'
+        "503":
+          description: One or more dependencies are not ready
+          schema:
+            $ref: '#/definitions/http.ReadyzResponse'
+      summary: Readiness Check
+      tags:
+      - health
 securityDefinitions:
   BearerAuth:
     description: Type "Bearer" followed by a space and JWT token.

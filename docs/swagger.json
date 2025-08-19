@@ -794,6 +794,72 @@
                     }
                 }
             }
+        },
+        "/buildz": {
+            "get": {
+                "description": "Returns build and version information about the service",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "health"
+                ],
+                "summary": "Build Information",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/http.BuildzResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/healthz": {
+            "get": {
+                "description": "Basic health check endpoint that returns service status",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "health"
+                ],
+                "summary": "Health Check",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/http.HealthzResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/readyz": {
+            "get": {
+                "description": "Readiness check that verifies database and Redis connectivity",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "health"
+                ],
+                "summary": "Readiness Check",
+                "responses": {
+                    "200": {
+                        "description": "All dependencies are ready",
+                        "schema": {
+                            "$ref": "#/definitions/http.ReadyzResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "One or more dependencies are not ready",
+                        "schema": {
+                            "$ref": "#/definitions/http.ReadyzResponse"
+                        }
+                    }
+                }
+            }
         }
     },
     "definitions": {
@@ -1047,6 +1113,76 @@
             "properties": {
                 "scope_id": {
                     "type": "string"
+                }
+            }
+        },
+        "http.BuildzResponse": {
+            "type": "object",
+            "properties": {
+                "build_time": {
+                    "type": "string",
+                    "example": "2025-08-19T12:34:56Z"
+                },
+                "commit": {
+                    "type": "string",
+                    "example": "abc123def456"
+                },
+                "env": {
+                    "type": "string",
+                    "example": "dev"
+                },
+                "service": {
+                    "type": "string",
+                    "example": "auth-microservice"
+                },
+                "version": {
+                    "type": "string",
+                    "example": "v1.0.0"
+                }
+            }
+        },
+        "http.HealthzResponse": {
+            "type": "object",
+            "properties": {
+                "service": {
+                    "type": "string",
+                    "example": "auth-microservice"
+                },
+                "status": {
+                    "type": "string",
+                    "example": "ok"
+                }
+            }
+        },
+        "http.ReadyzResponse": {
+            "type": "object",
+            "properties": {
+                "deps": {
+                    "type": "object",
+                    "properties": {
+                        "postgres": {
+                            "type": "object",
+                            "properties": {
+                                "ready": {
+                                    "type": "boolean",
+                                    "example": true
+                                }
+                            }
+                        },
+                        "redis": {
+                            "type": "object",
+                            "properties": {
+                                "ready": {
+                                    "type": "boolean",
+                                    "example": true
+                                }
+                            }
+                        }
+                    }
+                },
+                "status": {
+                    "type": "string",
+                    "example": "ok"
                 }
             }
         }

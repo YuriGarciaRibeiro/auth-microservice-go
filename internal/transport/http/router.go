@@ -66,11 +66,6 @@ func NewRouter(logger *zap.SugaredLogger, appCache *cache.RedisClient) http.Hand
 		return otelhttp.NewHandler(h, "http.server").(http.HandlerFunc)
 	})
 
-	r.Get("/healthz", func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("OK"))
-	})
-
 	validate := validator.New()
 
 	gormDb := db.ConnectPostgres()
