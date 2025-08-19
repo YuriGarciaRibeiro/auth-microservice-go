@@ -11,13 +11,14 @@ import (
 	"github.com/YuriGarciaRibeiro/auth-microservice-go/internal/infra/db"
 	tokenSvc "github.com/YuriGarciaRibeiro/auth-microservice-go/internal/service/token"
 	handler "github.com/YuriGarciaRibeiro/auth-microservice-go/internal/transport/http/handler"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/YuriGarciaRibeiro/auth-microservice-go/internal/transport/middleware"
 	"github.com/YuriGarciaRibeiro/auth-microservice-go/internal/usecase"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-playground/validator/v10"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/redis/go-redis/v9"
 	httpSwagger "github.com/swaggo/http-swagger"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.uber.org/zap"
 )
 
@@ -60,6 +61,10 @@ func NewRouter(logger *zap.SugaredLogger, appCache *cache.RedisClient) http.Hand
 	r.Use(middleware.Recover)
 	r.Use(middleware.Logging)
 	r.Use(middleware.PrometheusHTTP) 
+
+	r.Use(func(h http.Handler) http.Handler {
+		return otelhttp.NewHandler(h, "http.server").(http.HandlerFunc)
+	})
 
 	r.Get("/healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)

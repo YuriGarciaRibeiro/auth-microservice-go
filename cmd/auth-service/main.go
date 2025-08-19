@@ -14,6 +14,7 @@
 package main
 
 import (
+	"context"
 	"log"
 	"net/http"
 	"os"
@@ -22,8 +23,10 @@ import (
 	"github.com/YuriGarciaRibeiro/auth-microservice-go/internal/infra/cache"
 	"github.com/YuriGarciaRibeiro/auth-microservice-go/internal/infra/loggger"
 	"github.com/YuriGarciaRibeiro/auth-microservice-go/internal/infra/metrics"
+	"github.com/YuriGarciaRibeiro/auth-microservice-go/internal/infra/trace"
 	internalhttp "github.com/YuriGarciaRibeiro/auth-microservice-go/internal/transport/http"
 	"github.com/joho/godotenv"
+	"go.uber.org/zap"
 )
 
 func main() {
@@ -36,6 +39,12 @@ func main() {
 		panic(err)
 	}
 	defer l.Sync()
+
+	shutdown, err := trace.Init()
+	if err != nil {
+		loggger.L().Fatal("otel init error", zap.Error(err))
+	}
+	defer shutdown(context.Background())
 
 	metrics.MustRegister()
 

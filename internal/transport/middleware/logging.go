@@ -1,55 +1,52 @@
 package middleware
 
 import (
-	"net"
 	"net/http"
 	"time"
 
 	"go.uber.org/zap"
 )
 
-// statusWriter wraps http.ResponseWriter to capture HTTP status code.
 type statusWriter struct {
 	http.ResponseWriter
-	status int
+	status      int
+	wroteHeader bool
 }
 
 func (w *statusWriter) WriteHeader(code int) {
+	if w.wroteHeader {
+		// não chama de novo; só atualiza o campo para log
+		w.status = code
+		return
+	}
 	w.status = code
+	w.wroteHeader = true
 	w.ResponseWriter.WriteHeader(code)
 }
 
-// Logging middleware emits a structured log per request with duration and status.
+func (w *statusWriter) Write(b []byte) (int, error) {
+	// se ninguém chamou WriteHeader ainda, force 200 uma única vez
+	if !w.wroteHeader {
+		w.WriteHeader(http.StatusOK)
+	}
+	return w.ResponseWriter.Write(b)
+}
+
 func Logging(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		sw := &statusWriter{ResponseWriter: w, status: http.StatusOK}
 		start := time.Now()
-		sw := &statusWriter{ResponseWriter: w, status: 200}
-
 		next.ServeHTTP(sw, r)
 
-		duration := time.Since(start)
-		reqID, _ := GetRequestID(r.Context())
-
+		requestID, _ := GetRequestID(r.Context())
 		zap.L().Info("http_request",
-			zap.String("request_id", reqID),
+			zap.String("request_id", requestID),
 			zap.String("method", r.Method),
 			zap.String("path", r.URL.Path),
 			zap.Int("status", sw.status),
-			zap.Duration("duration", duration),
-			zap.String("remote_ip", clientIP(r)),
+			zap.Duration("duration", time.Since(start)),
+			zap.String("remote_ip", r.RemoteAddr),
 			zap.String("user_agent", r.UserAgent()),
 		)
 	})
-}
-
-func clientIP(r *http.Request) string {
-	// honor X-Forwarded-For if present (behind proxies)
-	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-		return xff
-	}
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		return r.RemoteAddr
-	}
-	return host
 }

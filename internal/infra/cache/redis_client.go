@@ -6,7 +6,10 @@ import (
 	"encoding/json"
 	"time"
 
+	"github.com/YuriGarciaRibeiro/auth-microservice-go/internal/infra/loggger"
+	"github.com/redis/go-redis/extra/redisotel/v9"
 	"github.com/redis/go-redis/v9"
+	"go.uber.org/zap"
 )
 
 type RedisClient struct {
@@ -20,6 +23,9 @@ func NewRedisClient(addr, password string, db int) *RedisClient {
 		Password: password,
 		DB:       db,
 	})
+	if err := redisotel.InstrumentTracing(rdb); err != nil {
+		loggger.L().Error("failed to instrument Redis client", zap.Error(err))
+	}
 	return &RedisClient{client: rdb, ctx: context.Background()}
 }
 
