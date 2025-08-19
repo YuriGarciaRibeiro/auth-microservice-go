@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"github.com/YuriGarciaRibeiro/auth-microservice-go/internal/domain"
+	apierrors "github.com/YuriGarciaRibeiro/auth-microservice-go/internal/errors"
 )
 
 // set util for membership checks in O(1)
@@ -40,11 +41,11 @@ func RequireScopes(scopes ...string) func(http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			p, ok := GetPrincipal(r)
 			if !ok || p.ID == "" {
-				http.Error(w, "unauthorized", http.StatusUnauthorized)
+				apierrors.Unauthorized(w, "Authentication required")
 				return
 			}
 			if !hasAny(p.Scopes, req) {
-				http.Error(w, "forbidden (missing scope)", http.StatusForbidden)
+				apierrors.Forbidden(w, "Insufficient permissions: missing required scope")
 				return
 			}
 			next.ServeHTTP(w, r)
@@ -58,11 +59,11 @@ func RequireAllScopes(scopes ...string) func(http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			p, ok := GetPrincipal(r)
 			if !ok || p.ID == "" {
-				http.Error(w, "unauthorized", http.StatusUnauthorized)
+				apierrors.Unauthorized(w, "Authentication required")
 				return
 			}
 			if !hasAll(p.Scopes, req) {
-				http.Error(w, "forbidden (missing scope)", http.StatusForbidden)
+				apierrors.Forbidden(w, "Insufficient permissions: missing required scopes")
 				return
 			}
 			next.ServeHTTP(w, r)
@@ -76,11 +77,11 @@ func RequireRoles(roles ...string) func(http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			p, ok := GetPrincipal(r)
 			if !ok || p.ID == "" {
-				http.Error(w, "unauthorized", http.StatusUnauthorized)
+				apierrors.Unauthorized(w, "Authentication required")
 				return
 			}
 			if !hasAny(p.Roles, req) {
-				http.Error(w, "forbidden (missing role)", http.StatusForbidden)
+				apierrors.Forbidden(w, "Insufficient permissions: missing required role")
 				return
 			}
 			next.ServeHTTP(w, r)
@@ -94,11 +95,11 @@ func RequireAudience(requiredAud string) func(http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			p, ok := GetPrincipal(r)
 			if !ok || p.ID == "" {
-				http.Error(w, "unauthorized", http.StatusUnauthorized)
+				apierrors.Unauthorized(w, "Authentication required")
 				return
 			}
 			if !hasAny(p.Audience, req) {
-				http.Error(w, "forbidden (wrong audience)", http.StatusForbidden)
+				apierrors.Forbidden(w, "Insufficient permissions: wrong audience")
 				return
 			}
 			next.ServeHTTP(w, r)
@@ -111,11 +112,11 @@ func RequireSubjectType(t domain.PrincipalType) func(http.Handler) http.Handler 
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			p, ok := GetPrincipal(r)
 			if !ok || p.ID == "" {
-				http.Error(w, "unauthorized", http.StatusUnauthorized)
+				apierrors.Unauthorized(w, "Authentication required")
 				return
 			}
 			if p.Type != t {
-				http.Error(w, "forbidden (subject type)", http.StatusForbidden)
+				apierrors.Forbidden(w, "Insufficient permissions: wrong subject type")
 				return
 			}
 			next.ServeHTTP(w, r)

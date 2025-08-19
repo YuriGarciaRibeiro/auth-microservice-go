@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/YuriGarciaRibeiro/auth-microservice-go/internal/domain"
+	apierrors "github.com/YuriGarciaRibeiro/auth-microservice-go/internal/errors"
 )
 
 type ctxKey string
@@ -23,13 +24,13 @@ func GetPrincipal(r *http.Request) (domain.Principal, bool) {
 	return domain.Principal{}, false
 }
 
-func MustPrincipal(w http.ResponseWriter, r *http.Request) domain.Principal {
+func MustPrincipal(w http.ResponseWriter, r *http.Request) (domain.Principal, bool) {
 	p, ok := GetPrincipal(r)
 	if !ok || p.ID == "" {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
-		return domain.Principal{} // caller should return after this
+		apierrors.Unauthorized(w, "Authentication required")
+		return domain.Principal{}, false
 	}
-	return p
+	return p, true
 }
 
 func Authn(tokens domain.TokenService) func(http.Handler) http.Handler {
@@ -39,23 +40,23 @@ func Authn(tokens domain.TokenService) func(http.Handler) http.Handler {
 
 			auth := r.Header.Get("Authorization")
 			if !strings.HasPrefix(auth, "Bearer ") {
-				http.Error(w, "missing or malformed Authorization header", http.StatusUnauthorized)
+				apierrors.Unauthorized(w, "Missing or malformed Authorization header")
 				return
 			}
 			access := strings.TrimPrefix(auth, "Bearer ")
 			if access == "" {
-				http.Error(w, "missing access token", http.StatusUnauthorized)
+				apierrors.Unauthorized(w, "Missing access token")
 				return
 			}
 
 			claims, err := tokens.VerifyAccess(access)
 			if err != nil {
-				http.Error(w, "invalid or expired token", http.StatusUnauthorized)
+				apierrors.Unauthorized(w, "Invalid or expired token")
 				return
 			}
 			principal := domain.Principal{
-				Type:     claims.SubjectType, 
-				ID:       claims.SubjectID,  
+				Type:     claims.SubjectType,
+				ID:       claims.SubjectID,
 				Email:    claims.Email,
 				Roles:    claims.Roles,
 				Scopes:   claims.Scopes,

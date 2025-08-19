@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/YuriGarciaRibeiro/auth-microservice-go/internal/domain"
+	apierrors "github.com/YuriGarciaRibeiro/auth-microservice-go/internal/errors"
 	"github.com/YuriGarciaRibeiro/auth-microservice-go/internal/infra/cache"
 	"github.com/YuriGarciaRibeiro/auth-microservice-go/internal/usecase"
 	"github.com/go-playground/validator/v10"
@@ -91,24 +92,28 @@ func (h *AuthHandler) SignUpHandler(w http.ResponseWriter, r *http.Request) {
 	// 1) Decode and validate payload
 	var req SignUpRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "invalid payload", http.StatusBadRequest)
+		apierrors.BadRequest(w, "Invalid JSON payload")
 		return
 	}
 	if err := h.Validate.Struct(req); err != nil {
-		http.Error(w, "validation failed: "+err.Error(), http.StatusUnprocessableEntity)
+		apierrors.ValidationError(w, "Validation failed", err.Error())
 		return
 	}
 
 	// 2) Create user (domain-level)
 	user, err := h.Signup.Execute(req.Email, req.Password)
 	if err != nil {
-		http.Error(w, "failed to create user: "+err.Error(), http.StatusInternalServerError)
+		if strings.Contains(err.Error(), "already exists") {
+			apierrors.Conflict(w, "User with this email already exists")
+			return
+		}
+		apierrors.InternalError(w, "Failed to create user")
 		return
 	}
 
 	roles, scopes, err := h.PermissionRepository.ListUserScopesEffective(user.ID, time.Now())
 	if err != nil {
-		http.Error(w, "failed to fetch user scopes: "+err.Error(), http.StatusInternalServerError)
+		apierrors.InternalError(w, "Failed to fetch user permissions")
 		return
 	}
 
@@ -124,7 +129,7 @@ func (h *AuthHandler) SignUpHandler(w http.ResponseWriter, r *http.Request) {
 
 	pair, err := h.TokenService.IssuePair(principal)
 	if err != nil {
-		http.Error(w, "failed to issue tokens: "+err.Error(), http.StatusInternalServerError)
+		apierrors.InternalError(w, "Failed to issue authentication tokens")
 		return
 	}
 
@@ -157,23 +162,23 @@ func (h *AuthHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 	// 1) Decode and validate input
 	var req LoginRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "invalid payload", http.StatusBadRequest)
+		apierrors.BadRequest(w, "Invalid JSON payload")
 		return
 	}
 	if err := h.Validate.Struct(req); err != nil {
-		http.Error(w, "validation failed", http.StatusUnprocessableEntity)
+		apierrors.ValidationError(w, "Validation failed", err.Error())
 		return
 	}
 
 	user, err := h.Login.Execute(req.Email, req.Password)
 	if err != nil || user.ID == "" {
-		http.Error(w, "invalid credentials", http.StatusUnauthorized)
+		apierrors.Unauthorized(w, "Invalid email or password")
 		return
 	}
 
 	roles, scopes, err := h.PermissionRepository.ListUserScopesEffective(user.ID, time.Now())
 	if err != nil {
-		http.Error(w, "failed to fetch user scopes: "+err.Error(), http.StatusInternalServerError)
+		apierrors.InternalError(w, "Failed to fetch user permissions")
 		return
 	}
 
@@ -188,7 +193,7 @@ func (h *AuthHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 
 	pair, err := h.TokenService.IssuePair(principal)
 	if err != nil {
-		http.Error(w, "failed to issue tokens", http.StatusInternalServerError)
+		apierrors.InternalError(w, "Failed to issue authentication tokens")
 		return
 	}
 
@@ -215,17 +220,17 @@ func (h *AuthHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 func (h *AuthHandler) RefreshHandler(w http.ResponseWriter, r *http.Request) {
 	var req RefreshRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "invalid payload", http.StatusBadRequest)
+		apierrors.BadRequest(w, "Invalid JSON payload")
 		return
 	}
 	if err := h.Validate.Struct(req); err != nil {
-		http.Error(w, "validation failed", http.StatusUnprocessableEntity)
+		apierrors.ValidationError(w, "Validation failed", err.Error())
 		return
 	}
 
 	pair, err := h.TokenService.Rotate(req.RefreshToken)
 	if err != nil {
-		http.Error(w, "invalid or expired refresh token", http.StatusUnauthorized)
+		apierrors.Unauthorized(w, "Invalid or expired refresh token")
 		return
 	}
 
@@ -252,11 +257,11 @@ func (h *AuthHandler) RefreshHandler(w http.ResponseWriter, r *http.Request) {
 func (h *AuthHandler) LogoutHandler(w http.ResponseWriter, r *http.Request) {
 	var req LogoutRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "invalid payload", http.StatusBadRequest)
+		apierrors.BadRequest(w, "Invalid JSON payload")
 		return
 	}
 	if err := h.Validate.Struct(req); err != nil {
-		http.Error(w, "validation failed: "+err.Error(), http.StatusUnprocessableEntity)
+		apierrors.ValidationError(w, "Validation failed", err.Error())
 		return
 	}
 
@@ -269,7 +274,7 @@ func (h *AuthHandler) LogoutHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.TokenService.RevokePair(access, req.RefreshToken); err != nil {
-		http.Error(w, "failed to revoke tokens", http.StatusInternalServerError)
+		apierrors.InternalError(w, "Failed to revoke tokens")
 		return
 	}
 
@@ -289,18 +294,18 @@ func (h *AuthHandler) LogoutHandler(w http.ResponseWriter, r *http.Request) {
 func (h *AuthHandler) IntrospectHandler(w http.ResponseWriter, r *http.Request) {
 	var req IntrospectRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "invalid payload", http.StatusBadRequest)
+		apierrors.BadRequest(w, "Invalid JSON payload")
 		return
 	}
 	if err := h.Validate.Struct(req); err != nil {
-		http.Error(w, "validation failed", http.StatusUnprocessableEntity)
+		apierrors.ValidationError(w, "Validation failed", err.Error())
 		return
 	}
 
 	active, claims, err := h.TokenService.Introspect(req.Token)
 	if err != nil {
 		// Operational error on our side (e.g., Redis down)
-		http.Error(w, "introspection error", http.StatusInternalServerError)
+		apierrors.InternalError(w, "Token introspection failed")
 		return
 	}
 
@@ -317,4 +322,3 @@ func (h *AuthHandler) IntrospectHandler(w http.ResponseWriter, r *http.Request) 
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(resp)
 }
-

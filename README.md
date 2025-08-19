@@ -14,6 +14,9 @@ A robust, production-ready authentication microservice built with Go, featuring 
 - **Observability**: Comprehensive monitoring with Prometheus and Grafana
 - **Health Checks**: Built-in health monitoring endpoints
 - **Docker Support**: Containerized deployment with Docker Compose
+- **Centralized Configuration**: Environment-based configuration with validation
+- **Structured Error Handling**: Consistent JSON error responses with proper HTTP status codes
+- **Production Ready**: Clean architecture, logging, metrics, and tracing
 
 ## 🏗️ Architecture
 
@@ -24,14 +27,17 @@ The project follows Clean Architecture principles with clear separation of conce
 ├── internal/
 │   ├── domain/               # Business entities and interfaces
 │   ├── usecase/              # Business logic implementation
+│   ├── config/               # Centralized configuration management
+│   ├── errors/               # Structured error handling system
 │   ├── infra/                # Infrastructure layer
 │   │   ├── db/               # Database repositories and models
 │   │   ├── cache/            # Redis caching implementation
-│   │   ├── logger/           # Logging configuration
-│   │   └── metrics/          # Prometheus metrics
+│   │   ├── logger/           # Structured logging configuration
+│   │   ├── metrics/          # Prometheus metrics
+│   │   └── trace/            # OpenTelemetry tracing
 │   └── transport/            # HTTP handlers and middleware
 ├── docs/                     # Swagger documentation
-└── observability/            # Monitoring configuration
+└── observability/            # Monitoring configuration (Grafana, Prometheus)
 ```
 
 ## 🛠️ Tech Stack
@@ -121,23 +127,45 @@ The project follows Clean Architecture principles with clear separation of conce
 
 ## 🔧 Configuration
 
+The application now features **centralized configuration** with automatic validation and clear error messages.
+
 ### Environment Variables
 
 | Variable | Description | Default | Required |
 |----------|-------------|---------|----------|
+| `SERVER_PORT` | Server port | `8080` | ❌ |
+| `SERVER_HOST` | Server host | `` | ❌ |
 | `DB_HOST` | PostgreSQL host | `localhost` | ✅ |
 | `DB_PORT` | PostgreSQL port | `5432` | ✅ |
 | `DB_USER` | PostgreSQL user | `user` | ✅ |
 | `DB_PASSWORD` | PostgreSQL password | - | ✅ |
 | `DB_NAME` | PostgreSQL database name | `auth_db` | ✅ |
-| `REDIS_ADDR` | Redis address | `localhost:6379` | ✅ |
+| `REDIS_ADDR` | Redis address | `localhost:6379` | ❌ |
 | `REDIS_PASS` | Redis password | - | ❌ |
 | `REDIS_DB` | Redis database number | `0` | ❌ |
 | `ACCESS_SECRET` | JWT access token secret | - | ✅ |
 | `REFRESH_SECRET` | JWT refresh token secret | - | ✅ |
 | `ACCESS_TOKEN_TTL` | Access token TTL | `15m` | ❌ |
-| `REFRESH_TOKEN_TTL` | Refresh token TTL | `7d` | ❌ |
-| `PORT` | Server port | `8080` | ❌ |
+| `REFRESH_TOKEN_TTL` | Refresh token TTL | `168h` (7 days) | ❌ |
+| `JWT_ISSUER` | JWT token issuer | `auth-microservice` | ❌ |
+| `JWT_AUDIENCE` | JWT token audience (CSV) | - | ❌ |
+| `CACHE_PROFILE_TTL` | Profile cache TTL | `5m` | ❌ |
+| `PERM_CACHE_TTL` | Permission cache TTL | `15m` | ❌ |
+| `LOG_LEVEL` | Log level (debug,info,warn,error) | `info` | ❌ |
+| `LOG_ENCODING` | Log encoding (json,console) | `json` | ❌ |
+| `APP_ENV` | Application environment | `dev` | ❌ |
+
+### Configuration Validation
+
+The application validates all required configuration on startup and provides clear error messages:
+
+```bash
+# Missing required configuration
+Configuration error: ACCESS_SECRET is required
+
+# Invalid configuration format  
+Configuration error: invalid duration format for ACCESS_TOKEN_TTL
+```
 
 ## 📚 API Documentation
 
@@ -145,6 +173,27 @@ The API documentation is automatically generated using Swagger and available at:
 - **Swagger UI**: http://localhost:8080/docs/
 - **OpenAPI JSON**: http://localhost:8080/docs/swagger.json
 - **OpenAPI YAML**: http://localhost:8080/docs/swagger.yaml
+
+### 🎯 Structured Error Responses
+
+All API endpoints now return consistent, structured error responses in JSON format:
+
+```json
+{
+  "type": "validation_error",
+  "message": "Validation failed", 
+  "details": "Field validation for 'Email' failed on the 'email' tag"
+}
+```
+
+**Error Types:**
+- `validation_error` (422) - Request validation failed
+- `authentication_error` (401) - Invalid credentials or token
+- `authorization_error` (403) - Insufficient permissions
+- `conflict_error` (409) - Resource already exists
+- `not_found` (404) - Resource not found
+- `bad_request` (400) - Malformed request
+- `internal_error` (500) - Server error
 
 ### 🔐 Authentication Endpoints
 
@@ -268,6 +317,33 @@ curl -X POST "http://localhost:8080/auth/signup" \
   }'
 ```
 
+**Success Response (201):**
+```json
+{
+  "access_token": "eyJhbGciOiJIUzI1NiIs...",
+  "refresh_token": "eyJhbGciOiJIUzI1NiIs...",
+  "access_exp": "2025-08-19T15:30:00Z",
+  "refresh_exp": "2025-08-26T14:30:00Z"
+}
+```
+
+**Error Response - Validation Failed (422):**
+```json
+{
+  "type": "validation_error",
+  "message": "Validation failed",
+  "details": "Field validation for 'Email' failed on the 'email' tag"
+}
+```
+
+**Error Response - User Already Exists (409):**
+```json
+{
+  "type": "conflict_error",
+  "message": "User with this email already exists"
+}
+```
+
 #### User Login
 ```bash
 curl -X POST "http://localhost:8080/auth/login" \
@@ -276,6 +352,14 @@ curl -X POST "http://localhost:8080/auth/login" \
     "email": "user@example.com",
     "password": "123456"
   }'
+```
+
+**Error Response - Invalid Credentials (401):**
+```json
+{
+  "type": "authentication_error",
+  "message": "Invalid email or password"
+}
 ```
 
 #### Client Credentials Flow
@@ -299,16 +383,49 @@ curl -X POST "http://localhost:8080/auth/introspect" \
   }'
 ```
 
+#### Testing Protected Endpoints
+```bash
+# Missing Authorization header
+curl -X GET "http://localhost:8080/admin/scopes"
+
+# Response (401):
+{
+  "type": "authentication_error",
+  "message": "Missing or malformed Authorization header"
+}
+
+# Invalid token
+curl -X GET "http://localhost:8080/admin/scopes" \
+  -H "Authorization: Bearer invalid-token"
+
+# Response (401):
+{
+  "type": "authentication_error", 
+  "message": "Invalid or expired token"
+}
+
+# Valid token but insufficient permissions
+curl -X GET "http://localhost:8080/admin/scopes" \
+  -H "Authorization: Bearer <valid-user-token-without-admin-role>"
+
+# Response (403):
+{
+  "type": "authorization_error",
+  "message": "Insufficient permissions: missing required role"
+}
+```
+
 ## 🐳 Docker Services
 
 The docker-compose.yml includes:
 
 - **auth-service**: The main authentication service
-- **postgres**: PostgreSQL database
+- **postgres**: PostgreSQL database  
 - **redis**: Redis cache
 - **pgadmin**: PostgreSQL administration interface (http://localhost:5050)
 - **prometheus**: Metrics collection (http://localhost:9090)
 - **grafana**: Metrics visualization (http://localhost:3000)
+- **jaeger**: Distributed tracing interface (http://localhost:16686)
 
 ## 🚀 Deployment
 
@@ -364,5 +481,21 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - [Prometheus](https://prometheus.io/) for metrics
 - [Grafana](https://grafana.com/) for visualization
 
+## 📈 Project Status
+
+**Production Ready** ✅
+
+This microservice has been thoroughly reviewed and enhanced with:
+- ✅ Centralized configuration with validation
+- ✅ Structured error handling across all endpoints
+- ✅ Clean architecture and code organization
+- ✅ Comprehensive observability (logs, metrics, tracing)
+- ✅ Docker containerization
+- ✅ API documentation with Swagger
+- ✅ JWT-based authentication with RBAC
+- ✅ Redis caching for performance
+- ✅ PostgreSQL for reliable data persistence
+
+**Latest Version**: Enhanced with structured error responses and centralized configuration management.
 
 ⭐ **Star this repository if you find it helpful!**

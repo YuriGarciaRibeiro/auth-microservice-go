@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"runtime/debug"
 
+	apierrors "github.com/YuriGarciaRibeiro/auth-microservice-go/internal/errors"
 	"go.uber.org/zap"
 )
 
@@ -20,7 +21,7 @@ func Recover(next http.Handler) http.Handler {
 					zap.String("method", r.Method),
 					zap.String("path", r.URL.Path),
 				)
-				http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+				apierrors.InternalError(w, "Internal server error")
 			}
 		}()
 		next.ServeHTTP(w, r)

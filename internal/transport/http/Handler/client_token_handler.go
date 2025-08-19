@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/YuriGarciaRibeiro/auth-microservice-go/internal/domain"
+	apierrors "github.com/YuriGarciaRibeiro/auth-microservice-go/internal/errors"
 	"github.com/YuriGarciaRibeiro/auth-microservice-go/internal/usecase"
 	"github.com/go-playground/validator/v10"
 )
@@ -23,9 +24,9 @@ type ClientTokenResponse struct {
 }
 
 type ClientTokenHandler struct {
-	Validate     *validator.Validate
-	UC           *usecase.ClientCredentialsUseCase
-	TokenService domain.TokenService
+	Validate             *validator.Validate
+	UC                   *usecase.ClientCredentialsUseCase
+	TokenService         domain.TokenService
 	PermissionRepository domain.PermissionRepository
 }
 
@@ -44,15 +45,17 @@ type ClientTokenHandler struct {
 func (h *ClientTokenHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	var req ClientTokenRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "invalid payload", http.StatusBadRequest); return
+		apierrors.BadRequest(w, "Invalid JSON payload")
+		return
 	}
 	if err := h.Validate.Struct(req); err != nil {
-		http.Error(w, "validation failed", http.StatusUnprocessableEntity); return
+		apierrors.ValidationError(w, "Validation failed", err.Error())
+		return
 	}
 
 	scopes, err := h.PermissionRepository.ListClientScopes(req.ClientID)
 	if err != nil {
-		http.Error(w, "invalid client credentials", http.StatusUnauthorized)
+		apierrors.Unauthorized(w, "Invalid client credentials")
 		return
 	}
 
@@ -63,13 +66,13 @@ func (h *ClientTokenHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		Audience: req.Audience,
 	})
 	if err != nil {
-		http.Error(w, "invalid client credentials", http.StatusUnauthorized)
+		apierrors.Unauthorized(w, "Invalid client credentials")
 		return
 	}
 
 	token, exp, err := h.TokenService.IssueAccessOnly(principal)
 	if err != nil {
-		http.Error(w, "failed to issue access token", http.StatusInternalServerError)
+		apierrors.InternalError(w, "Failed to issue access token")
 		return
 	}
 

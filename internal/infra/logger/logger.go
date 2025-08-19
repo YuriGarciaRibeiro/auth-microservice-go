@@ -1,4 +1,4 @@
-package loggger
+package logger
 
 import (
 	"os"
@@ -61,7 +61,7 @@ func Init() (*zap.Logger, error) {
 
 func L() *zap.Logger {
 	if logger == nil {
-		_, _ = Init() 
+		_, _ = Init()
 	}
 	return logger
 }

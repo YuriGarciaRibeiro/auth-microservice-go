@@ -17,11 +17,10 @@ import (
 	"context"
 	"log"
 	"net/http"
-	"os"
-	"strconv"
 
+	"github.com/YuriGarciaRibeiro/auth-microservice-go/internal/config"
 	"github.com/YuriGarciaRibeiro/auth-microservice-go/internal/infra/cache"
-	"github.com/YuriGarciaRibeiro/auth-microservice-go/internal/infra/loggger"
+	"github.com/YuriGarciaRibeiro/auth-microservice-go/internal/infra/logger"
 	"github.com/YuriGarciaRibeiro/auth-microservice-go/internal/infra/metrics"
 	"github.com/YuriGarciaRibeiro/auth-microservice-go/internal/infra/trace"
 	internalhttp "github.com/YuriGarciaRibeiro/auth-microservice-go/internal/transport/http"
@@ -30,36 +29,50 @@ import (
 )
 
 func main() {
+	// Load .env file if available
 	if err := godotenv.Load(); err != nil {
 		log.Println("No .env file found, relying on environment variables")
 	}
 
-	l, err := loggger.Init()
+	// Load and validate configuration
+	cfg, err := config.Load()
+	if err != nil {
+		log.Fatalf("Configuration error: %v", err)
+	}
+
+	// Initialize logger
+	l, err := logger.Init()
 	if err != nil {
 		panic(err)
 	}
 	defer l.Sync()
 
+	// Initialize tracing
 	shutdown, err := trace.Init()
 	if err != nil {
-		loggger.L().Fatal("otel init error", zap.Error(err))
+		logger.L().Fatal("otel init error", zap.Error(err))
 	}
 	defer shutdown(context.Background())
 
+	// Initialize metrics
 	metrics.MustRegister()
 
 	sugar := l.Sugar()
 
-	redisAddr := os.Getenv("REDIS_ADDR")
-	redisPass := os.Getenv("REDIS_PASS")
-	redisDB, _ := strconv.Atoi(os.Getenv("REDIS_DB"))
+	// Initialize Redis with config
+	redisClient := cache.NewRedisClient(
+		cfg.Redis.Addr,
+		cfg.Redis.Password,
+		cfg.Redis.DB,
+	)
 
-	redisClient := cache.NewRedisClient(redisAddr, redisPass, redisDB)
-
+	// Initialize router
 	router := internalhttp.NewRouter(sugar, redisClient)
 
-	sugar.Info("server started in port :8080")
-	if err := http.ListenAndServe(":8080", router); err != nil {
-		sugar.Fatalw("Error starting server on port :8080", "error", err)
+	// Start server with config
+	addr := ":" + cfg.Server.Port
+	sugar.Infof("server started on port %s", addr)
+	if err := http.ListenAndServe(addr, router); err != nil {
+		sugar.Fatalw("Error starting server", "addr", addr, "error", err)
 	}
 }

@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"time"
 
+	apierrors "github.com/YuriGarciaRibeiro/auth-microservice-go/internal/errors"
 	"github.com/YuriGarciaRibeiro/auth-microservice-go/internal/usecase"
 	"github.com/go-chi/chi"
 	"github.com/go-playground/validator/v10"
@@ -50,16 +51,16 @@ type revokeUserScopeReq struct {
 func (h *AdminPermHandler) CreateScope(w http.ResponseWriter, r *http.Request) {
 	var req CreateScopeRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "bad request", 400)
+		apierrors.BadRequest(w, "Invalid JSON payload")
 		return
 	}
 	if err := h.Validate.Struct(req); err != nil {
-		http.Error(w, "validation failed", 422)
+		apierrors.ValidationError(w, "Validation failed", err.Error())
 		return
 	}
 	s, err := h.UC.CreateScope(req.Key, req.Desc)
 	if err != nil {
-		http.Error(w, "conflict", 409)
+		apierrors.Conflict(w, "Scope with this key already exists")
 		return
 	}
 	w.WriteHeader(http.StatusCreated)
@@ -75,7 +76,7 @@ func (h *AdminPermHandler) CreateScope(w http.ResponseWriter, r *http.Request) {
 func (h *AdminPermHandler) ListScopes(w http.ResponseWriter, _ *http.Request) {
 	list, err := h.UC.ListScopes()
 	if err != nil {
-		http.Error(w, "internal error", 500)
+		apierrors.InternalError(w, "Internal server error")
 		return
 	}
 	out := make([]map[string]string, 0, len(list))
@@ -96,16 +97,16 @@ func (h *AdminPermHandler) ListScopes(w http.ResponseWriter, _ *http.Request) {
 func (h *AdminPermHandler) CreateRole(w http.ResponseWriter, r *http.Request) {
 	var req CreateRoleRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "bad request", 400)
+		apierrors.BadRequest(w, "Invalid JSON payload")
 		return
 	}
 	if err := h.Validate.Struct(req); err != nil {
-		http.Error(w, "validation failed", 422)
+		apierrors.ValidationError(w, "Validation failed", err.Error())
 		return
 	}
 	role, err := h.UC.CreateRole(req.Key, req.Desc)
 	if err != nil {
-		http.Error(w, "conflict", 409)
+		apierrors.Conflict(w, "Resource conflict")
 		return
 	}
 	w.WriteHeader(http.StatusCreated)
@@ -124,15 +125,15 @@ func (h *AdminPermHandler) AddScopesToRole(w http.ResponseWriter, r *http.Reques
 	roleID := chiURLParam(r, "roleId")
 	var req idsBody
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "bad request", 400)
+		apierrors.BadRequest(w, "Invalid JSON payload")
 		return
 	}
 	if err := h.Validate.Struct(req); err != nil {
-		http.Error(w, "validation failed", 422)
+		apierrors.ValidationError(w, "Validation failed", err.Error())
 		return
 	}
 	if err := h.UC.AddScopesToRole(roleID, req.IDs); err != nil {
-		http.Error(w, "conflict", 409)
+		apierrors.Conflict(w, "Resource conflict")
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -150,15 +151,15 @@ func (h *AdminPermHandler) AddRolesToUser(w http.ResponseWriter, r *http.Request
 	userID := chiURLParam(r, "userId")
 	var req idsBody
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "bad request", 400)
+		apierrors.BadRequest(w, "Invalid JSON payload")
 		return
 	}
 	if err := h.Validate.Struct(req); err != nil {
-		http.Error(w, "validation failed", 422)
+		apierrors.ValidationError(w, "Validation failed", err.Error())
 		return
 	}
 	if err := h.UC.AddRolesToUser(userID, req.IDs); err != nil {
-		http.Error(w, "conflict", 409)
+		apierrors.Conflict(w, "Resource conflict")
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -176,15 +177,15 @@ func (h *AdminPermHandler) AddScopesToClient(w http.ResponseWriter, r *http.Requ
 	clientID := chiURLParam(r, "clientId")
 	var req idsBody
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "bad request", 400)
+		apierrors.BadRequest(w, "Invalid JSON payload")
 		return
 	}
 	if err := h.Validate.Struct(req); err != nil {
-		http.Error(w, "validation failed", 422)
+		apierrors.ValidationError(w, "Validation failed", err.Error())
 		return
 	}
 	if err := h.UC.AddScopesToClient(clientID, req.IDs); err != nil {
-		http.Error(w, "conflict", 409)
+		apierrors.Conflict(w, "Resource conflict")
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -207,7 +208,7 @@ func chiURLParam(r *http.Request, key string) string {
 func (h *AdminPermHandler) ListRoles(w http.ResponseWriter, _ *http.Request) {
 	roles, err := h.UC.ListRoles()
 	if err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		apierrors.InternalError(w, "Internal server error")
 		return
 	}
 	out := make([]map[string]string, 0, len(roles))
@@ -229,7 +230,7 @@ func (h *AdminPermHandler) ListUserRoles(w http.ResponseWriter, r *http.Request)
 	userID := chi.URLParam(r, "userId")
 	roles, err := h.UC.ListUserRoles(userID)
 	if err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		apierrors.InternalError(w, "Internal server error")
 		return
 	}
 	_ = json.NewEncoder(w).Encode(roles)
@@ -247,7 +248,7 @@ func (h *AdminPermHandler) ListUserEffective(w http.ResponseWriter, r *http.Requ
 	userID := chi.URLParam(r, "userId")
 	roles, scopes, err := h.UC.ListUserScopesEffective(userID)
 	if err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		apierrors.InternalError(w, "Internal server error")
 		return
 	}
 	_ = json.NewEncoder(w).Encode(map[string]interface{}{"roles": roles, "scopes": scopes})
@@ -269,15 +270,15 @@ func (h *AdminPermHandler) GrantUserScope(w http.ResponseWriter, r *http.Request
 	userID := chi.URLParam(r, "userId")
 	var req grantUserScopeReq
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "bad request", http.StatusBadRequest)
+		apierrors.BadRequest(w, "Invalid JSON payload")
 		return
 	}
 	if err := h.Validate.Struct(req); err != nil {
-		http.Error(w, "validation failed", http.StatusUnprocessableEntity)
+		apierrors.ValidationError(w, "Validation failed", err.Error())
 		return
 	}
 	if err := h.UC.GrantUserScope(userID, req.ScopeID, req.GrantedBy, req.ExpiresAt); err != nil {
-		http.Error(w, "conflict", http.StatusConflict)
+		apierrors.Conflict(w, "Resource conflict")
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -299,15 +300,15 @@ func (h *AdminPermHandler) RevokeUserScope(w http.ResponseWriter, r *http.Reques
 	userID := chi.URLParam(r, "userId")
 	var req revokeUserScopeReq
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "bad request", http.StatusBadRequest)
+		apierrors.BadRequest(w, "Invalid JSON payload")
 		return
 	}
 	if err := h.Validate.Struct(req); err != nil {
-		http.Error(w, "validation failed", http.StatusUnprocessableEntity)
+		apierrors.ValidationError(w, "Validation failed", err.Error())
 		return
 	}
 	if err := h.UC.RevokeUserScope(userID, req.ScopeID); err != nil {
-		http.Error(w, "conflict", http.StatusConflict)
+		apierrors.Conflict(w, "Resource conflict")
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -325,7 +326,7 @@ func (h *AdminPermHandler) ListClientScopes(w http.ResponseWriter, r *http.Reque
 	clientID := chi.URLParam(r, "clientId")
 	scopes, err := h.UC.ListClientScopes(clientID)
 	if err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		apierrors.InternalError(w, "Internal server error")
 		return
 	}
 	_ = json.NewEncoder(w).Encode(scopes)
