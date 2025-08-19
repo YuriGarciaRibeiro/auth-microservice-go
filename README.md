@@ -76,6 +76,7 @@ The project follows Clean Architecture principles with clear separation of conce
    cp .env.example .env
    
    # Edit the .env file with your configurations
+   # Importante: Altere pelo menos ACCESS_SECRET, REFRESH_SECRET e DB_PASSWORD
    ```
 
 3. **Start all services**
@@ -110,14 +111,23 @@ The project follows Clean Architecture principles with clear separation of conce
 
 3. **Set environment variables**
    ```bash
+   # Database configuration
    export DB_HOST=localhost
    export DB_PORT=5432
    export DB_USER=user
-   export DB_PASSWORD=pass
+   export DB_PASSWORD=your-secure-password
    export DB_NAME=auth_db
+   
+   # Redis configuration
    export REDIS_ADDR=localhost:6379
-   export ACCESS_SECRET=your-access-secret
-   export REFRESH_SECRET=your-refresh-secret
+   
+   # JWT secrets (REQUIRED - use strong random strings)
+   export ACCESS_SECRET=your-super-secret-access-key-min-32-chars
+   export REFRESH_SECRET=your-super-secret-refresh-key-min-32-chars
+   
+   # Optional: Server configuration
+   export PORT=8080
+   export APP_ENV=dev
    ```
 
 4. **Run the application**
@@ -133,27 +143,45 @@ The application now features **centralized configuration** with automatic valida
 
 | Variable | Description | Default | Required |
 |----------|-------------|---------|----------|
-| `SERVER_PORT` | Server port | `8080` | ❌ |
+| **Server Configuration** |
+| `SERVER_PORT` or `PORT` | Server port | `8080` | ❌ |
 | `SERVER_HOST` | Server host | `` | ❌ |
+| `APP_ENV` | Application environment | `dev` | ❌ |
+| **Database Configuration** |
+| `DATABASE_URL` | PostgreSQL connection string | - | ❌ |
 | `DB_HOST` | PostgreSQL host | `localhost` | ✅ |
 | `DB_PORT` | PostgreSQL port | `5432` | ✅ |
 | `DB_USER` | PostgreSQL user | `user` | ✅ |
 | `DB_PASSWORD` | PostgreSQL password | - | ✅ |
 | `DB_NAME` | PostgreSQL database name | `auth_db` | ✅ |
+| **Redis Configuration** |
 | `REDIS_ADDR` | Redis address | `localhost:6379` | ❌ |
 | `REDIS_PASS` | Redis password | - | ❌ |
 | `REDIS_DB` | Redis database number | `0` | ❌ |
+| **JWT Configuration** |
 | `ACCESS_SECRET` | JWT access token secret | - | ✅ |
 | `REFRESH_SECRET` | JWT refresh token secret | - | ✅ |
 | `ACCESS_TOKEN_TTL` | Access token TTL | `15m` | ❌ |
 | `REFRESH_TOKEN_TTL` | Refresh token TTL | `168h` (7 days) | ❌ |
 | `JWT_ISSUER` | JWT token issuer | `auth-microservice` | ❌ |
 | `JWT_AUDIENCE` | JWT token audience (CSV) | - | ❌ |
+| **Email Configuration** |
+| `SMTP_HOST` | SMTP server host | - | ❌ |
+| `SMTP_PORT` | SMTP server port | - | ❌ |
+| `SMTP_USER` | SMTP username | - | ❌ |
+| `SMTP_PASS` | SMTP password | - | ❌ |
+| **Cache Configuration** |
 | `CACHE_PROFILE_TTL` | Profile cache TTL | `5m` | ❌ |
 | `PERM_CACHE_TTL` | Permission cache TTL | `15m` | ❌ |
+| **Logging Configuration** |
 | `LOG_LEVEL` | Log level (debug,info,warn,error) | `info` | ❌ |
 | `LOG_ENCODING` | Log encoding (json,console) | `json` | ❌ |
-| `APP_ENV` | Application environment | `dev` | ❌ |
+| **OpenTelemetry/Tracing Configuration** |
+| `OTEL_SERVICE_NAME` | Service name for tracing | `auth-service` | ❌ |
+| `OTEL_EXPORTER_JAEGER_ENDPOINT` | Jaeger collector endpoint | `http://localhost:14268/api/traces` | ❌ |
+| `OTEL_TRACES_SAMPLER` | Tracing sampler type | `parentbased_always_on` | ❌ |
+| `OTEL_TRACES_SAMPLER_ARG` | Sampler argument | `1.0` | ❌ |
+| `OTEL_RESOURCE_ATTRIBUTES` | Resource attributes for tracing | `service.version=dev,deployment.environment=dev` | ❌ |
 
 ### Configuration Validation
 
@@ -167,12 +195,102 @@ Configuration error: ACCESS_SECRET is required
 Configuration error: invalid duration format for ACCESS_TOKEN_TTL
 ```
 
-## 📚 API Documentation
+## �️ Development Commands
+
+This project includes a Makefile with convenient commands for development:
+
+### 📖 Documentation
+```bash
+make docs          # Generate Swagger documentation
+make docs-serve     # Generate docs and start service
+```
+
+### 🔨 Build & Run
+```bash
+make build         # Build the application
+make run           # Run the application locally
+make test          # Run tests
+make clean         # Clean build artifacts
+```
+
+### 🐳 Docker
+```bash
+make docker-build  # Build Docker image
+make docker-up     # Start all services (PostgreSQL, Redis, etc.)
+make docker-down   # Stop all services
+make docker-logs   # View Docker logs
+```
+
+### 🚀 Setup
+```bash
+make setup         # Complete setup (install deps, copy .env, generate docs)
+make dev-setup     # Setup development environment (.env file)
+make install-swag  # Install Swagger generation tool
+```
+
+## �📚 API Documentation
 
 The API documentation is automatically generated using Swagger and available at:
 - **Swagger UI**: http://localhost:8080/docs/
 - **OpenAPI JSON**: http://localhost:8080/docs/swagger.json
 - **OpenAPI YAML**: http://localhost:8080/docs/swagger.yaml
+
+### 🔄 Updating Documentation
+
+To regenerate the Swagger documentation after making changes to API endpoints:
+
+**Using Makefile (recommended):**
+```bash
+# Generate documentation only
+make docs
+
+# Generate docs and start service
+make docs-serve
+```
+
+**Manual method:**
+```bash
+# Install swag if not installed
+go install github.com/swaggo/swag/cmd/swag@latest
+
+# Generate documentation
+swag init -g cmd/auth-service/main.go -o docs/
+```
+
+The documentation is auto-generated from:
+- 📝 Swagger annotations in handler files (`@Summary`, `@Description`, etc.)
+- 🏷️ Go struct tags for request/response models
+- 🔧 Configuration in `cmd/auth-service/main.go` (title, version, host, etc.)
+
+### 📝 Adding Documentation to New Endpoints
+
+When creating new API endpoints, add Swagger annotations like this:
+
+```go
+// @Summary Create a new user
+// @Description Creates a new user account with email and password
+// @Tags auth
+// @Accept json
+// @Produce json
+// @Param input body CreateUserRequest true "User creation data"
+// @Success 201 {object} UserResponse
+// @Failure 400 {object} map[string]string "Invalid request"
+// @Failure 422 {object} map[string]string "Validation failed"
+// @Failure 500 {object} map[string]string "Internal server error"
+// @Router /auth/users [post]
+func (h *AuthHandler) CreateUser(w http.ResponseWriter, r *http.Request) {
+    // Your handler implementation
+}
+```
+
+**Important annotations:**
+- `@Summary`: Brief description
+- `@Description`: Detailed description
+- `@Tags`: Groups endpoints in Swagger UI
+- `@Accept`/`@Produce`: Content types
+- `@Param`: Request parameters
+- `@Success`/`@Failure`: Response specifications
+- `@Router`: HTTP method and path
 
 ### 🎯 Structured Error Responses
 

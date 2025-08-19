@@ -131,6 +131,8 @@ func NewRouter(logger *zap.SugaredLogger, appCache *cache.RedisClient) http.Hand
 
 	adminHandler := &handler.AdminPermHandler{UC: permUC, Validate: validate}
 
+	health := NewHealthHandler(gormDb, rawRedis, 2*time.Second, 1*time.Second)
+
 	// Routes.
 	r.Route("/auth", func(r chi.Router) {
 		r.Post("/signup", authHandler.SignUpHandler)
@@ -166,6 +168,10 @@ func NewRouter(logger *zap.SugaredLogger, appCache *cache.RedisClient) http.Hand
 
 	// Swagger UI.
 	r.Get("/docs/*", httpSwagger.WrapHandler)
+
+	r.Get("/healthz", health.Healthz)
+	r.Get("/readyz", health.Readyz)
+	r.Get("/buildz", health.Buildz)
 
 	return r
 }
