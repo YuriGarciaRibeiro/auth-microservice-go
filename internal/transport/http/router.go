@@ -60,7 +60,7 @@ func NewRouter(logger *zap.SugaredLogger, appCache *cache.RedisClient) http.Hand
 	r.Use(middleware.RequestID)
 	r.Use(middleware.Recover)
 	r.Use(middleware.Logging)
-	r.Use(middleware.PrometheusHTTP) 
+	r.Use(middleware.PrometheusHTTP)
 
 	r.Use(func(h http.Handler) http.Handler {
 		return otelhttp.NewHandler(h, "http.server").(http.HandlerFunc)
@@ -99,8 +99,6 @@ func NewRouter(logger *zap.SugaredLogger, appCache *cache.RedisClient) http.Hand
 		mustDuration("PERM_CACHE_TTL", "15m"),
 	)
 
-	
-
 	// Use cases.
 	signUpUC := usecase.NewSignupUseCase(userRepo)
 	loginUC := usecase.NewLoginUseCase(userRepo)
@@ -109,18 +107,18 @@ func NewRouter(logger *zap.SugaredLogger, appCache *cache.RedisClient) http.Hand
 
 	// Handlers.
 	authHandler := &handler.AuthHandler{
-		Signup:       signUpUC,
-		Login:        loginUC,
-		Validate:     validate,
-		TokenService: tokenService,
-		Cache:        appCache,
+		Signup:               signUpUC,
+		Login:                loginUC,
+		Validate:             validate,
+		TokenService:         tokenService,
+		Cache:                appCache,
 		PermissionRepository: permRepo,
 	}
 
 	clientTokenHandler := &handler.ClientTokenHandler{
-		Validate:     validate,
-		UC:           clientUC,
-		TokenService: tokenService,
+		Validate:             validate,
+		UC:                   clientUC,
+		TokenService:         tokenService,
 		PermissionRepository: permRepo,
 	}
 
